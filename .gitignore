@@ -34,3 +34,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cloudflare Workers build output (OpenNext) and Wrangler state
+/.open-next/
+/.wrangler/
+.dev.vars
+
+# Claude Code personal files
+/.claude/settings.local.json
+
+# allow the template
+!.env.example
+
+# Playwright output
+/test-results
+/playwright-report

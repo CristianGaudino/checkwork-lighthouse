@@ -1,0 +1,51 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss";
+
+/* Checkwork brand tokens (checkwork/src/styles/globals.css), plus status colours. Components use the semantic utilities below, never raw colours. */
+:root {
+    --canvas:     #0b0f1f; /* Midnight */
+    --surface:    #121832;
+    --fg:         #f5f6fa; /* Off-white */
+    --fg-muted:   #aab0cc; /* 8.7:1 on canvas */
+    --line:       rgb(255 255 255 / 0.11);
+    --accent:     #6366f1; /* Indigo */
+    --accent-alt: #a78bfa; /* Lavender */
+    /* Status lights, toned to sit inside the brand rather than raw traffic-light colours */
+    --ok:         #4cc38a; /* 8.6:1 on canvas */
+    --warn:       #e5a33d; /* 8.7:1 on canvas */
+    --bad:        #e5484d; /* 4.9:1 on canvas, 4.5:1 on surface */
+    color-scheme: dark;
+}
+
+@theme inline {
+    --color-canvas: var(--canvas);
+    --color-surface: var(--surface);
+    --color-fg: var(--fg);
+    --color-fg-muted: var(--fg-muted);
+    --color-line: var(--line);
+    --color-accent: var(--accent);
+    --color-accent-alt: var(--accent-alt);
+    --color-ok: var(--ok);
+    --color-warn: var(--warn);
+    --color-bad: var(--bad);
+    --font-display: var(--font-sora), system-ui, sans-serif;
+    --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; animation-delay: 0s !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+@layer base {
+    :focus-visible { outline: 2px solid var(--accent-alt); outline-offset: 3px; border-radius: 4px; }
+    html { -webkit-text-size-adjust: 100%; }
+    h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
+    h1 { letter-spacing: -0.03em; line-height: 1.04; }
+    h2 { letter-spacing: -0.022em; line-height: 1.1; }
+    h3 { letter-spacing: -0.012em; line-height: 1.25; }
+    p { text-wrap: pretty; }
+}
+
+@media (prefers-contrast: more) {
+    :root { --line: rgb(255 255 255 / 0.45); --fg-muted: #d9dcee; }
+}

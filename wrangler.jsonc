@@ -1,0 +1,18 @@
+{
+	// Lighthouse on Cloudflare Workers, built by OpenNext (`npx opennextjs-cloudflare build`).
+	// The whole site sits behind Cloudflare Access, and the Worker checks the Access token on every page (src/lib/access.ts).
+	// Secrets (GITHUB_TOKEN, UPTIMEROBOT_API_KEY, ACCESS_TEAM_DOMAIN, ACCESS_AUD) are set on the Worker, never here. Locally they go in .env.local.
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "lighthouse",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-10-01",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+	"services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "lighthouse" }],
+	// Plain values live here: every `wrangler deploy` replaces the dashboard's plain-text variables with these.
+	"vars": { "APP_ENV": "production" },
+	// www is the canonical address and must stay first (wrangler dev serves as the first route's host); the bare domain redirects to it (next.config.ts)
+	"routes": [{ "pattern": "www.lighthouse.checkwork.ie", "custom_domain": true }, { "pattern": "lighthouse.checkwork.ie", "custom_domain": true }],
+	"workers_dev": false,
+	"observability": { "enabled": true }
+}
