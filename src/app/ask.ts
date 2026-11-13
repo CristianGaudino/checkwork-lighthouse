@@ -5,11 +5,13 @@ import { askClaude, type AskResult } from '@/lib/ask';
 import { fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
 import { briefPrompt, fetchIncidentFacts, fetchMerged, incidentPrompt } from '@/lib/briefing';
 import { span } from '@/lib/today';
+import { forgetAll, memo, MINUTE } from '@/lib/memo';
+import { redirect } from 'next/navigation';
 import { PROJECTS } from '../../lighthouse.config';
 import { loadAnalytics, loadRepos, loadToday, loadUptime } from './_data';
 
 /**
- * The two Claude buttons. Server actions are reachable by a direct POST, so each one checks the Access login again
+ * The two Claude buttons, and the page's Refresh. Server actions are reachable by a direct POST, so each one checks the Access login again
  * (the page's check does not cover them) and treats the form input as untrusted.
  */
 
@@ -24,7 +26,7 @@ export async function morningBrief(): Promise<AskResult> {
         loadToday(),
         k.github ? fetchMerged(k.github, new Date(now.getTime() - 86_400_000)).catch(() => []) : [],
         k.projects
-            ? Promise.all([fetchBoardItems(PROJECTS, k.projects), k.github ? fetchIssueLinks(PROJECTS, k.github) : new Map<string, string>()])
+            ? Promise.all([memo('board', MINUTE, () => fetchBoardItems(PROJECTS, k.projects!)), k.github ? memo('issue-links', MINUTE, () => fetchIssueLinks(PROJECTS, k.github!)) : new Map<string, string>()])
                 .then(([items, links]) => groupBoard(PROJECTS, items, links)).catch(() => undefined)
             : undefined,
     ]);
@@ -49,4 +51,11 @@ export async function incidentHelp(_prev: AskResult, form: FormData): Promise<As
         ...facts,
         workerErrors: w ? `${w.errors} of ${w.requests} requests` : undefined,
     }), k.claude);
+}
+
+/** The page's Refresh button: forget every remembered answer, then load the page fresh. */
+export async function refresh() {
+    await requireAdmin();
+    forgetAll();
+    redirect('/');
 }

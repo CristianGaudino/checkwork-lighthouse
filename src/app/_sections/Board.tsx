@@ -1,5 +1,6 @@
 import { automationGaps, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
 import { askHref } from '@/lib/claude';
+import { memo, MINUTE } from '@/lib/memo';
 import { PROJECTS } from '../../../lighthouse.config';
 import { ext, Heading, link, Problem, Setup } from './ui';
 
@@ -10,8 +11,8 @@ export async function Board({ local }: { local: boolean }) {
     let board, gaps;
     try {
         const [items, links] = await Promise.all([
-            fetchBoardItems(PROJECTS, token),
-            process.env.GITHUB_TOKEN ? fetchIssueLinks(PROJECTS, process.env.GITHUB_TOKEN) : new Map<string, string>(),
+            memo('board', MINUTE, () => fetchBoardItems(PROJECTS, token)),
+            process.env.GITHUB_TOKEN ? memo('issue-links', MINUTE, () => fetchIssueLinks(PROJECTS, process.env.GITHUB_TOKEN!)) : new Map<string, string>(),
         ]);
         board = groupBoard(PROJECTS, items, links);
         gaps = automationGaps(PROJECTS, items);

@@ -3,8 +3,12 @@ import type { PullRequest, RepoStatus } from './github';
 import type { Uptime } from './uptime';
 
 /** One thing for the owner to do, worded as the action, linking to where it is done. */
-/** `incidentRepo`: set on a site-down task, so the page can offer the incident helper for that repo. */
-export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string };
+/**
+ * `incidentRepo`: set on a site-down task, so the page can offer the incident helper for that repo.
+ * `pr`: set on a PR task, so the page can offer Approve (when someone else opened it) and Merge (only when its checks
+ * aren't failing and nobody asked for changes, so a PR sent back is never one tap from main).
+ */
+export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; pr?: { repo: string; number: number; mine: boolean; canMerge: boolean } };
 export type Light = 'bad' | 'warn' | 'ok';
 export type ProjectState = Project & { light: Light; repoStatus: RepoStatus | undefined; uptime: Uptime | null | undefined };
 
@@ -12,13 +16,13 @@ const STALE_MS = 3 * 86_400_000;
 const DEPENDABOT = 'dependabot'; // the app's login in GraphQL (dependabot[bot] in REST)
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-function prTask(project: string, pr: PullRequest, now: number): Task | null {
+function prTask(project: string, repo: string, pr: PullRequest, now: number): Task | null {
     if (pr.draft) return null;
     const stale = now - Date.parse(pr.updatedAt) > STALE_MS;
     // Your own PRs (and Claude's, which run as you) just say when; anyone else's say who, so the other dev's work stands out
     const who = pr.author === OWNER ? 'Updated' : `From ${pr.author}, updated`;
     const detail = `${who} ${ago(pr.updatedAt, now)}${stale ? ', gone quiet' : ''}, ${CHECK_LABEL[pr.checks]}`;
-    const base = { project, title: `#${pr.number} ${pr.title}`, detail, href: pr.url };
+    const base = { project, title: `#${pr.number} ${pr.title}`, detail, href: pr.url, pr: { repo, number: pr.number, mine: pr.author === OWNER, canMerge: pr.checks !== 'failing' && pr.review !== 'changes' } };
     if (pr.checks === 'failing') return { ...base, level: 1, action: 'Fix checks on' };
     if (pr.review === 'changes') return { ...base, level: 2, action: 'Update' };
     if (pr.review === 'approved' && pr.checks !== 'running') return { ...base, level: 2, action: 'Merge' };
@@ -51,7 +55,7 @@ export function buildBoard(projects: Project[], repos: RepoStatus[] | undefined,
             mine.push({ project: p.name, level: 1, action: 'Check access to', title: p.repo, detail: 'Renamed, or the token cannot see it', href: `https://github.com/${OWNER}/${p.repo}` });
         } else if (r) {
             const bots = r.prs.filter(pr => !pr.draft && pr.author === DEPENDABOT);
-            for (const pr of r.prs) { if (pr.author === DEPENDABOT) continue; const t = prTask(p.name, pr, now); if (t) mine.push(t); }
+            for (const pr of r.prs) { if (pr.author === DEPENDABOT) continue; const t = prTask(p.name, p.repo, pr, now); if (t) mine.push(t); }
             // Dependency updates are one task per repo, so a batch of them doesn't bury the real work
             if (bots.length) {
                 const failing = bots.filter(pr => pr.checks === 'failing').length;

@@ -75,3 +75,12 @@ it('folds Dependabot PRs into one task per repo, and names who opened a PR unles
     ]);
     expect(tasks[0].href).toBe('https://github.com/CristianGaudino/r/pulls/app%2Fdependabot');
 });
+
+it('marks PR tasks with what the page needs to merge or approve them', () => {
+    const { tasks } = buildBoard([p('r')], [repo([pr({ number: 7, author: 'CristianGaudino' }), pr({ number: 8, author: 'other', checks: 'failing' }), pr({ number: 9, review: 'changes' })])], undefined, NOW);
+    expect(tasks.map(t => t.pr)).toEqual([
+        { repo: 'r', number: 8, mine: false, canMerge: false },
+        { repo: 'r', number: 7, mine: true, canMerge: true },
+        { repo: 'r', number: 9, mine: false, canMerge: false }, // changes asked for: no merge
+    ]);
+});

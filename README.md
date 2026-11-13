@@ -48,6 +48,7 @@ On the Worker (Cloudflare dashboard, Workers & Pages, lighthouse, Settings, Vari
 | `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read) for traffic and Worker errors. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
 | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account the sites run in. |
 | `NEON_API_KEY` | Neon API key, for compute and storage use. |
+| `GITHUB_WRITE_TOKEN` | Optional. A second fine-grained token, All repositories: Pull requests, Contents and Issues **Read and write**, for the Merge, Approve and New issue buttons. Kept apart so the token behind every page load stays read-only. |
 | `ANTHROPIC_API_KEY` | For the morning brief and the incident helper. Spent only when their buttons are pressed. |
 | `ACCESS_TEAM_DOMAIN` | Your Access team domain, such as `plain-tree-3979.cloudflareaccess.com`. |
 | `ACCESS_AUD` | The audience tag of the Access application covering the whole site. |

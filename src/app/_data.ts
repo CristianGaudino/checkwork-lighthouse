@@ -5,6 +5,7 @@ import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes'
 import { fetchAnalytics, workerTasks, type Analytics as AnalyticsData } from '@/lib/cloudflare';
 import { fetchNeon, type NeonUsage } from '@/lib/neon';
 import { buildBoard, type Task } from '@/lib/today';
+import { memo, MINUTE } from '@/lib/memo';
 import { PROJECTS } from '../../lighthouse.config';
 
 /** Each source loads on its own and fails on its own: a problem comes back as a sentence for the page, never a throw. */
@@ -13,7 +14,7 @@ export async function loadRepos(): Promise<{ repos: RepoStatus[]; problem?: stri
     const token = process.env.GITHUB_TOKEN;
     if (!token) return { repos: [], problem: 'No GitHub data: set GITHUB_TOKEN on the Worker (or in .env.local) to see PRs and releases.' };
     try {
-        return { repos: await fetchRepos(PROJECTS, token) };
+        return { repos: await memo('repos', MINUTE, () => fetchRepos(PROJECTS, token)) };
     } catch (error) {
         console.error('Could not load GitHub', error);
         return { repos: [], problem: 'GitHub did not answer, so PRs and releases are missing. Reload in a minute.' };
@@ -24,7 +25,7 @@ export async function loadUptime(): Promise<{ uptimes?: (Uptime | null)[]; probl
     const key = process.env.UPTIMEROBOT_API_KEY;
     if (!key) return { problem: 'No uptime data: set UPTIMEROBOT_API_KEY on the Worker (or in .env.local).' };
     try {
-        return { uptimes: matchUptime(PROJECTS, await fetchMonitors(key)) };
+        return { uptimes: matchUptime(PROJECTS, await memo('uptime', MINUTE, () => fetchMonitors(key))) };
     } catch (error) {
         console.error('Could not load UptimeRobot', error);
         // The free plan allows 10 requests a minute, so a burst of reloads can hit it
@@ -36,7 +37,8 @@ export async function loadMinutes(publicRepos: Promise<Set<string>>): Promise<{ 
     const token = process.env.GITHUB_TOKEN;
     if (!token) return {}; // loadRepos already says the token is missing
     try {
-        const [items, free] = await Promise.all([fetchUsage(token), publicRepos]);
+        // Billing totals move by the minute at most, so ten minutes is plenty
+        const [items, free] = await Promise.all([memo('billing', 10 * MINUTE, () => fetchUsage(token)), publicRepos]);
         return { minutes: summarise(items, free) };
     } catch (error) {
         console.error('Could not load Actions usage', error);
@@ -51,7 +53,7 @@ export async function loadAnalytics(): Promise<{ data?: AnalyticsData; problem?:
     // A missing key is setup still to do, not a failure: the page shows it quietly
     if (!token || !account) return { setup: 'Set CLOUDFLARE_ANALYTICS_TOKEN (Account Analytics: Read) and CLOUDFLARE_ACCOUNT_ID to see visits, page views and Worker errors.' };
     try {
-        return { data: await fetchAnalytics(token, account) };
+        return { data: await memo('analytics', 5 * MINUTE, () => fetchAnalytics(token, account)) };
     } catch (error) {
         console.error('Could not load Cloudflare analytics', error);
         return { problem: 'Cloudflare did not answer the analytics query. Check the token has Account Analytics: Read, then reload.' };
@@ -62,7 +64,7 @@ export async function loadNeon(): Promise<{ projects?: NeonUsage[]; problem?: st
     const key = process.env.NEON_API_KEY;
     if (!key) return { setup: 'Set NEON_API_KEY to see compute and storage for the Neon projects (vintage and how-much).' };
     try {
-        return { projects: await fetchNeon(key) };
+        return { projects: await memo('neon', 10 * MINUTE, () => fetchNeon(key)) };
     } catch (error) {
         console.error('Could not load Neon', error);
         return { problem: 'Neon did not answer. Check NEON_API_KEY, then reload.' };
