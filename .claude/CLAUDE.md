@@ -13,6 +13,7 @@ Follows the vintage repo's standards (`../vintage/.claude/CLAUDE.md` and README)
 - Projects live in `lighthouse.config.ts`, one line each. Adding a project must stay one line: work things out from the repo or the site rather than adding config fields.
 - Data is fetched by the Worker, never the browser (the CSP allows only 'self'). One GitHub GraphQL query covers every repo.
 - Auth is Cloudflare Access, checked again by the Worker on every page (`requireAdmin()` in `src/lib/access.ts`, shared with checkwork). Not Clerk.
+- Local-only tools run under `npm run dev` and read the PC directly (`src/lib/local.ts`: git state of every repo in the parent folder). They return null on the Worker and only ever read: no fetch, checkout or write.
 - No D1 yet. It comes with alerts (#8), the first feature that needs to remember anything.
 - Anything that spends money on the Claude API (morning brief #13, incident helper #14) runs only when the owner presses a button. Never on a schedule.
 - UptimeRobot: free plan (10 API requests a minute), API v3 (v2 is legacy). Monitors are matched to projects by address (`src/lib/uptime.ts`). The list response also carries `httpPassword` and per-monitor `apiKey`: the schema keeps only the fields the page needs, keep it that way.
