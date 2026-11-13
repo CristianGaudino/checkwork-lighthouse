@@ -47,9 +47,9 @@ export async function loadMinutes(publicRepos: Promise<Set<string>>): Promise<{ 
 }
 
 export async function loadAnalytics(): Promise<{ data?: AnalyticsData; problem?: string; setup?: string }> {
-    const token = process.env.CLOUDFLARE_API_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
     // A missing key is setup still to do, not a failure: the page shows it quietly
-    if (!token || !account) return { setup: 'Set CLOUDFLARE_API_TOKEN (Account Analytics: Read) and CLOUDFLARE_ACCOUNT_ID to see visits, page views and Worker errors.' };
+    if (!token || !account) return { setup: 'Set CLOUDFLARE_ANALYTICS_TOKEN (Account Analytics: Read) and CLOUDFLARE_ACCOUNT_ID to see visits, page views and Worker errors.' };
     try {
         return { data: await fetchAnalytics(token, account) };
     } catch (error) {
