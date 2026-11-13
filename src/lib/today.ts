@@ -48,7 +48,8 @@ export function buildBoard(projects: Project[], repos: RepoStatus[] | undefined,
         } else if (r) {
             for (const pr of r.prs) { const t = prTask(p.name, pr, now); if (t) mine.push(t); }
             const n = r.release?.unreleased ?? 0;
-            if (r.release && n) {
+            // Only where releases deploy: a repo that deploys every merge has nothing waiting
+            if (r.release && n && r.releasesDeploy) {
                 const when = r.release.date ? `, ${ago(r.release.date, now)}` : '';
                 mine.push({ project: p.name, level: 2, action: `Release ${plural(n, 'commit')}`, detail: `On main since ${r.release.tag}${when}`, href: `https://github.com/${OWNER}/${p.repo}/compare/${r.release.tag}...main` });
             }

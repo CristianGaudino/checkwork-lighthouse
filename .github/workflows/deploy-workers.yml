@@ -1,23 +1,18 @@
 name: Deploy (Cloudflare Workers)
 
-# NOT ENABLED YET. Every job is skipped until the repository variable DEPLOY_ENABLED is set to 'true'
-# (Settings > Secrets and variables > Actions > Variables). Set it only after the owner steps in issue #3 are done.
-#
-# Production: a release (release.yml calls this with its tag) tests, builds on Linux
-# (OpenNext doesn't support building on Windows), deploys the lighthouse Worker, waits for the site, then runs the e2e
-# tests against it. Merging to main deploys nothing. From the Actions tab, run it with an older tag to roll back.
+# Every merge to main deploys (owner's call while the bulk of the work is under way; release tags can come back later,
+# as in vintage). It tests, builds on Linux (OpenNext doesn't support building on Windows), deploys the lighthouse
+# Worker, waits for the site, then runs the e2e tests against it. Skipped while the repository variable DEPLOY_ENABLED
+# is not 'true'. To roll back, run it from the Actions tab with an older commit or tag.
 on:
-  workflow_call:
-    inputs:
-      ref:
-        description: 'The release tag to deploy'
-        required: true
-        type: string
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
   workflow_dispatch:
     inputs:
       ref:
-        description: 'The release tag to deploy, like v1.0.0'
-        required: true
+        description: 'A commit or tag to deploy (default: main)'
+        required: false
         type: string
 
 concurrency:
@@ -41,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
@@ -56,7 +51,7 @@ jobs:
           APP_ENV: ''
       - run: npx opennextjs-cloudflare build
       - name: Deploy
-        run: npx wrangler deploy --var APP_COMMIT_SHA:${{ github.sha }} --var "APP_VERSION:$(git describe --tags --always)"
+        run: npx wrangler deploy --var "APP_COMMIT_SHA:$(git rev-parse HEAD)" --var "APP_VERSION:$(git describe --tags --always)"
       # A first deploy waits a few minutes for the address's certificate. Access answers with a redirect to its login, which is a pass.
       - name: Wait for the site
         run: curl -fsS -o /dev/null --retry 40 --retry-delay 15 --retry-all-errors --max-time 20 https://www.lighthouse.checkwork.ie/
@@ -73,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

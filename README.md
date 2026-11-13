@@ -32,7 +32,9 @@ The Access check is skipped under `npm run dev` only.
 
 ## Deploying
 
-Merging to `main` does not deploy. Run the **Release** workflow from the Actions tab and pick major, minor or patch. It tags the next version, then the deploy workflow tests, builds, deploys the Worker and runs the e2e suite against the live site. Both are gated on the repository variable `DEPLOY_ENABLED` being `true`, and need the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. To roll back, run **Deploy (Cloudflare Workers)** with an older tag.
+Every merge to `main` deploys (for now, while most of the work is under way). The **Deploy (Cloudflare Workers)** workflow tests, builds, deploys the Worker and runs the e2e suite against the live site. It is gated on the repository variable `DEPLOY_ENABLED` being `true`, and needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. To roll back, run it from the Actions tab with an older commit or tag.
+
+Deploy through the workflow, not `wrangler` from a laptop. Set secrets with `npx wrangler secret put` only once the Worker exists: on a missing Worker it offers to create an empty one, which replaces the real build.
 
 ## Secrets
 

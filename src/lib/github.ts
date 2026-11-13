@@ -21,6 +21,7 @@ const Repo = z.object({
     pullRequests: z.object({ nodes: z.array(Pr) }),
     refs: z.object({ nodes: z.array(Tag) }),
     pkg: z.object({ text: z.string().nullable() }).nullable().optional(), // null when the repo has no package.json at its root
+    releaseWorkflow: z.object({ id: z.string() }).nullable().optional(),
 }).nullable();
 
 /** The packages the version table compares, by their label. */
@@ -42,7 +43,8 @@ export type PullRequest = {
     review: 'approved' | 'changes' | 'waiting' | 'none';
     checks: 'passing' | 'failing' | 'running' | 'none';
 };
-export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; versions: Record<string, string> } | null;
+/** `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site. */
+export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; versions: Record<string, string> } | null;
 
 // Rollup states: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED
 const CHECKS: Record<string, PullRequest['checks']> = { SUCCESS: 'passing', FAILURE: 'failing', ERROR: 'failing', PENDING: 'running', EXPECTED: 'running' };
@@ -56,7 +58,8 @@ const FIELDS = `
   refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
     nodes { name compare(headRef: "main") { aheadBy } target { ... on Commit { committedDate } ... on Tag { target { ... on Commit { committedDate } } } } }
   }
-  pkg: object(expression: "HEAD:package.json") { ... on Blob { text } }`;
+  pkg: object(expression: "HEAD:package.json") { ... on Blob { text } }
+  releaseWorkflow: object(expression: "HEAD:.github/workflows/release.yml") { id }`;
 
 /** One GraphQL query covers every repo (aliases r0, r1...), so the page costs one GitHub request however many projects there are. */
 export const buildQuery = (projects: Project[]) =>
@@ -81,6 +84,7 @@ export function parseRepo(raw: unknown): RepoStatus {
             checks: CHECKS[pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? ''] ?? 'none',
         })),
         release: tag ? { tag: tag.name, date: tag.target.committedDate ?? tag.target.target?.committedDate ?? null, unreleased: tag.compare?.aheadBy ?? null } : null,
+        releasesDeploy: Boolean(repo.releaseWorkflow),
         versions: readVersions(repo.pkg?.text),
     };
 }
