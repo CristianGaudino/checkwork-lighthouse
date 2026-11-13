@@ -12,8 +12,8 @@ import { forgetAll } from '@/lib/memo';
 
 const NO_TOKEN = { error: 'Set GITHUB_WRITE_TOKEN (Pull requests, Contents and Issues: Read and write) to act from here.' };
 
-// After a change the remembered answers are stale, so the page loads fresh
-const done = (r: ActResult) => { if (r.ok) { forgetAll(); revalidatePath('/'); } return r; };
+// After a change the remembered answers are stale, so every page loads fresh
+const done = (r: ActResult) => { if (r.ok) { forgetAll(); revalidatePath('/', 'layout'); } return r; };
 
 async function prFields(form: FormData) {
     await requireAdmin();

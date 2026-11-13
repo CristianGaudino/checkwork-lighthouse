@@ -4,9 +4,10 @@ import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes';
 import { fetchAnalytics, workerTasks, type Analytics as AnalyticsData } from '@/lib/cloudflare';
 import { fetchNeon, type NeonUsage } from '@/lib/neon';
-import { buildBoard, type Task } from '@/lib/today';
+import { fetchLive, liveState, type LiveState } from '@/lib/live';
+import { ago, buildBoard, type Task } from '@/lib/today';
 import { memo, MINUTE } from '@/lib/memo';
-import { PROJECTS } from '../../lighthouse.config';
+import { OWNER, PROJECTS } from '../../lighthouse.config';
 
 /** Each source loads on its own and fails on its own: a problem comes back as a sentence for the page, never a throw. */
 
@@ -71,21 +72,45 @@ export async function loadNeon(): Promise<{ projects?: NeonUsage[]; problem?: st
     }
 }
 
+export async function loadLive(workers: string[]): Promise<{ deployed?: Map<string, string>; setup?: string; problem?: string }> {
+    const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    if (!token || !account) return {}; // loadAnalytics already asks for these
+    try {
+        return { deployed: await memo('live', 2 * MINUTE, () => fetchLive(token, account, workers)) };
+    } catch (error) {
+        if (/: 40[13]$/.test(String(error instanceof Error ? error.message : error))) return { setup: 'Add Workers Scripts: Read to CLOUDFLARE_ANALYTICS_TOKEN to see which sites run the latest main.' };
+        console.error('Could not load Worker deployments', error);
+        return { problem: 'Cloudflare did not say when the Workers were deployed. Reload in a minute.' };
+    }
+}
 
 /** Everything behind the task queue, shared by the page and the morning brief so both see the same picture. */
 export async function loadToday() {
     const reposLoad = loadRepos();
     // The billing report is fetched alongside; it only needs the repos' visibility to count the private ones
     const publicRepos = reposLoad.then(({ repos }) => new Set(PROJECTS.filter((_, i) => repos[i]?.isPrivate === false).map(p => p.repo)));
-    const [{ repos, problem }, uptime, usage, analytics] = await Promise.all([reposLoad, loadUptime(), loadMinutes(publicRepos), loadAnalytics()]);
+    const liveLoad = reposLoad.then(({ repos }) => loadLive([...new Set(repos.flatMap(r => r?.worker ?? []))]));
+    const [{ repos, problem }, uptime, usage, analytics, deploys] = await Promise.all([reposLoad, loadUptime(), loadMinutes(publicRepos), loadAnalytics(), liveLoad]);
     const board = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
     const rows = PROJECTS.map((p, i) => ({ ...p, worker: repos[i]?.worker ?? null }));
     const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const live: (LiveState | null)[] = PROJECTS.map((_, i) => {
+        const worker = repos[i]?.worker;
+        return worker ? liveState(repos[i], deploys.deployed?.get(worker)) : null;
+    });
     const extra: Task[] = [
+        ...PROJECTS.flatMap((p, i) => {
+            const l = live[i];
+            return l?.state === 'behind'
+                ? [{ project: p.name, level: 2 as const, action: 'Deploy', title: l.label, detail: `Live since ${ago(l.since)}`, href: `https://github.com/${OWNER}/${p.repo}/actions`, deploy: p.repo }]
+                : [];
+        }),
         ...(usage.minutes ? [minutesTask(usage.minutes)].filter(t => t !== null) : []),
         ...(analytics.data && account ? workerTasks(rows, analytics.data, account) : []),
     ];
     // Stable sort: these slot in by level, after the project tasks of the same level
     const tasks = [...board.tasks, ...extra].sort((a, b) => a.level - b.level);
-    return { repos, problem, uptime, usage, analytics, tasks, projects: board.projects, rows };
+    // One row per site, in PROJECTS order, for the Sites list and each project's page
+    const sites = board.projects.map((p, i) => ({ p, live: live[i], worker: rows[i].worker }));
+    return { repos, problem, uptime, usage, analytics, deploys, tasks, rows, sites };
 }

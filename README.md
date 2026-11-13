@@ -45,7 +45,7 @@ On the Worker (Cloudflare dashboard, Workers & Pages, lighthouse, Settings, Vari
 | `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Issues, Pull requests, Actions and Metadata, plus the account permission Plan (Actions minutes). |
 | `UPTIMEROBOT_API_KEY` | UptimeRobot's read-only API key. |
 | `GITHUB_PROJECTS_TOKEN` | Classic token with only `read:project`, for the board: fine-grained tokens can't read projects owned by a personal account. |
-| `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read) for traffic and Worker errors. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
+| `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read, Workers Scripts: Read) for traffic, Worker errors and which sites run the latest main. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
 | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account the sites run in. |
 | `NEON_API_KEY` | Neon API key, for compute and storage use. |
 | `GITHUB_WRITE_TOKEN` | Optional. A second fine-grained token, All repositories: Pull requests, Contents and Issues **Read and write**, for the Merge, Approve and New issue buttons. Kept apart so the token behind every page load stays read-only. |
