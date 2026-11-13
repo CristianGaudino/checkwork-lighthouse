@@ -3,6 +3,7 @@ import { fetchRepos, type RepoStatus } from '@/lib/github';
 import { ago, buildBoard, span, type Light, type ProjectState, type Task } from '@/lib/today';
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { buildDrift } from '@/lib/drift';
+import { needsLook, readLocalRepos, type LocalRepo } from '@/lib/local';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
 export const metadata = { title: 'Today' };
@@ -45,7 +46,7 @@ const ext = { target: '_blank', rel: 'noreferrer' } as const;
 
 export default async function Today() {
     await requireAdmin();
-    const [{ repos, problem }, uptime] = await Promise.all([loadRepos(), loadUptime()]);
+    const [{ repos, problem }, uptime, local] = await Promise.all([loadRepos(), loadUptime(), readLocalRepos()]);
     const { tasks, projects } = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
     const heading = tasks.length === 0 && (problem || uptime.problem) ? 'Today' : tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
 
@@ -62,6 +63,8 @@ export default async function Today() {
                     </ul>
                 )}
 
+            {local && <ThisPc root={local.root} repos={local.repos} />}
+
             <h2 className="mt-14 text-xl font-semibold">Projects</h2>
             <ul className="mt-4 divide-y divide-line border-y border-line">
                 {projects.map(p => <ProjectItem key={p.repo} p={p} known={!problem} />)}
@@ -69,6 +72,56 @@ export default async function Today() {
 
             {!problem && <Versions repos={repos} />}
         </>
+    );
+}
+
+const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
+/** Local only (`npm run dev`): repos on this PC with work not yet committed, pushed or pulled, and branches to tidy. */
+function ThisPc({ root, repos }: { root: string; repos: LocalRepo[] }) {
+    const look = repos.filter(needsLook);
+    const clean = repos.length - look.length;
+    return (
+        <>
+            <h2 className="mt-14 text-xl font-semibold">This PC</h2>
+            <p className="mt-1 text-sm text-fg-muted">
+                {root}, as of each repo&apos;s last fetch. {look.length ? `${n(clean, 'other repo is', 'other repos are')} clean.` : `All ${repos.length} repos are clean.`}
+            </p>
+            {look.length > 0 && (
+                <ul className="mt-4 divide-y divide-line border-y border-line">
+                    {look.map(r => {
+                        const now = [
+                            r.changed && n(r.changed, 'file changed', 'files changed'),
+                            r.ahead && `${n(r.ahead, 'commit')} to push`,
+                            r.behind && `${n(r.behind, 'commit')} to pull`,
+                        ].filter(Boolean);
+                        return (
+                            <li key={r.name} className="grid gap-x-6 gap-y-1 py-3 text-sm sm:grid-cols-[minmax(10rem,14rem)_1fr]">
+                                <span className="text-base font-medium">{r.name}</span>
+                                <div className="grid gap-1">
+                                    <p><span className="text-fg-muted">On {r.branch}</span>{now.length > 0 && <span>, {now.join(', ')}</span>}</p>
+                                    <Branches label="Never pushed" names={r.notPushed} />
+                                    <Branches label="Remote deleted" names={r.goneRemote} />
+                                    <Branches label="No commits in 30 days" names={r.old} />
+                                </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </>
+    );
+}
+
+/** A few branch names inline; a long list (often leftover worktree branches) collapses to a count you can open. */
+function Branches({ label, names }: { label: string; names: string[] }) {
+    if (!names.length) return null;
+    if (names.length <= 3) return <p className="text-fg-muted">{label}: {names.join(', ')}</p>;
+    return (
+        <details className="text-fg-muted">
+            <summary className="cursor-pointer hover:text-fg">{label}: {n(names.length, 'branch', 'branches')}</summary>
+            <p className="mt-1 pl-4">{names.join(', ')}</p>
+        </details>
     );
 }
 
