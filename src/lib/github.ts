@@ -17,14 +17,32 @@ const Tag = z.object({
     // A lightweight tag points at the commit; an annotated one at a Tag that points at it
     target: z.object({ committedDate: z.string().optional(), target: z.object({ committedDate: z.string().optional() }).optional() }),
 });
-const Repo = z.object({ pullRequests: z.object({ nodes: z.array(Pr) }), refs: z.object({ nodes: z.array(Tag) }) }).nullable();
+const Repo = z.object({
+    pullRequests: z.object({ nodes: z.array(Pr) }),
+    refs: z.object({ nodes: z.array(Tag) }),
+    pkg: z.object({ text: z.string().nullable() }).nullable().optional(), // null when the repo has no package.json at its root
+}).nullable();
+
+/** The packages the version table compares, by their label. */
+export const TRACKED = { Next: 'next', React: 'react', OpenNext: '@opennextjs/cloudflare', Wrangler: 'wrangler', Tailwind: 'tailwindcss', TypeScript: 'typescript', Drizzle: 'drizzle-orm', Zod: 'zod', Vitest: 'vitest', Playwright: '@playwright/test' } as const;
+
+/** Declared versions by label (as written, like "^16.4.5"), plus Node from `engines`. A missing or broken package.json gives {}. */
+export function readVersions(text: string | null | undefined): Record<string, string> {
+    let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; engines?: { node?: string } };
+    try { pkg = JSON.parse(text ?? ''); } catch { return {}; }
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    const out: Record<string, string> = {};
+    for (const [label, name] of Object.entries(TRACKED)) if (typeof deps[name] === 'string') out[label] = deps[name];
+    if (typeof pkg.engines?.node === 'string') out.Node = pkg.engines.node;
+    return out;
+}
 
 export type PullRequest = {
     number: number; title: string; url: string; draft: boolean; updatedAt: string; author: string;
     review: 'approved' | 'changes' | 'waiting' | 'none';
     checks: 'passing' | 'failing' | 'running' | 'none';
 };
-export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null } | null;
+export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; versions: Record<string, string> } | null;
 
 // Rollup states: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED
 const CHECKS: Record<string, PullRequest['checks']> = { SUCCESS: 'passing', FAILURE: 'failing', ERROR: 'failing', PENDING: 'running', EXPECTED: 'running' };
@@ -37,7 +55,8 @@ const FIELDS = `
   }
   refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
     nodes { name compare(headRef: "main") { aheadBy } target { ... on Commit { committedDate } ... on Tag { target { ... on Commit { committedDate } } } } }
-  }`;
+  }
+  pkg: object(expression: "HEAD:package.json") { ... on Blob { text } }`;
 
 /** One GraphQL query covers every repo (aliases r0, r1...), so the page costs one GitHub request however many projects there are. */
 export const buildQuery = (projects: Project[]) =>
@@ -62,6 +81,7 @@ export function parseRepo(raw: unknown): RepoStatus {
             checks: CHECKS[pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? ''] ?? 'none',
         })),
         release: tag ? { tag: tag.name, date: tag.target.committedDate ?? tag.target.target?.committedDate ?? null, unreleased: tag.compare?.aheadBy ?? null } : null,
+        versions: readVersions(repo.pkg?.text),
     };
 }
 

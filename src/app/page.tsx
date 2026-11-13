@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/access';
 import { fetchRepos, type RepoStatus } from '@/lib/github';
 import { ago, buildBoard, span, type Light, type ProjectState, type Task } from '@/lib/today';
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
+import { buildDrift } from '@/lib/drift';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
 export const metadata = { title: 'Today' };
@@ -39,6 +40,8 @@ function uptimeText(u: Uptime | null | undefined) {
 
 const LIGHT: Record<Light, string> = { bad: 'bg-bad', warn: 'bg-warn', ok: 'bg-ok' };
 const link = 'underline-offset-4 hover:text-fg hover:underline';
+// Every link leaves for another site (GitHub, UptimeRobot, the projects), so it opens in a new tab and Lighthouse stays put
+const ext = { target: '_blank', rel: 'noreferrer' } as const;
 
 export default async function Today() {
     await requireAdmin();
@@ -63,6 +66,49 @@ export default async function Today() {
             <ul className="mt-4 divide-y divide-line border-y border-line">
                 {projects.map(p => <ProjectItem key={p.repo} p={p} known={!problem} />)}
             </ul>
+
+            {!problem && <Versions repos={repos} />}
+        </>
+    );
+}
+
+/** Declared versions per repo; amber where a repo asks for less than the newest any repo uses. */
+function Versions({ repos }: { repos: RepoStatus[] }) {
+    const { labels, newest, rows } = buildDrift(PROJECTS, repos);
+    if (!rows.length) return null;
+    const cell = 'px-3 py-2.5 first:pl-0 last:pr-0';
+    return (
+        <>
+            <h2 className="mt-14 text-xl font-semibold">Versions</h2>
+            <p className="mt-1 text-sm text-fg-muted">What each package.json asks for. Amber is behind the newest version another repo uses.</p>
+            {/* relative: keeps the sr-only header (absolutely positioned) inside the scroll box instead of widening the page */}
+            <div className="relative mt-4 overflow-x-auto border-y border-line">
+                <table className="w-full whitespace-nowrap text-left text-sm tabular-nums">
+                    <thead className="text-fg-muted">
+                        <tr className="border-b border-line">
+                            <th scope="col" className={`${cell} align-top font-medium`}>Project</th>
+                            {labels.map(l => (
+                                <th key={l} scope="col" className={`${cell} align-top font-medium`}>{l}<span className="block font-normal">{newest[l]}</span></th>
+                            ))}
+                            <th scope="col" className={cell}><span className="sr-only">Issue</span></th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                        {rows.map(r => (
+                            <tr key={r.repo}>
+                                <th scope="row" className={`${cell} font-medium`}>{r.project}</th>
+                                {labels.map(l => {
+                                    const c = r.cells[l];
+                                    return <td key={l} className={`${cell} ${c?.behind ? 'text-warn' : 'text-fg-muted'}`}>{c ? c.spec : ''}</td>;
+                                })}
+                                <td className={`${cell} text-right`}>
+                                    {r.issueHref && <a {...ext} className={`${link} text-fg-muted`} href={r.issueHref}>File issue</a>}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </>
     );
 }
@@ -70,7 +116,7 @@ export default async function Today() {
 function TaskItem({ task }: { task: Task }) {
     return (
         <li className="grid gap-1 py-4 sm:grid-cols-[1fr_auto] sm:gap-x-6">
-            <a href={task.href} className="group flex min-w-0 items-start gap-3 text-base">
+            <a {...ext} href={task.href} className="group flex min-w-0 items-start gap-3 text-base">
                 {/* mt-2 centres the 8px light on the first 24px line */}
                 <span aria-hidden className={`mt-2 size-2 shrink-0 rounded-full ${task.level === 1 ? 'bg-bad' : 'bg-warn'}`} />
                 <span className="min-w-0 group-hover:underline group-hover:underline-offset-4">
@@ -97,9 +143,9 @@ function ProjectItem({ p, known }: { p: ProjectState; known: boolean }) {
                 {!known ? '' : release ? `${release.tag}, ${release.date ? ago(release.date) : 'date unknown'}` : 'Not released yet'}
             </span>
             <span className="flex gap-4 pl-5 text-fg-muted sm:pl-0">
-                <a className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>
-                <a className={link} href={`https://github.com/${OWNER}/${p.repo}`}>Repo</a>
-                <a className={link} href={`https://github.com/users/${OWNER}/projects/${p.project}`}>Board</a>
+                <a {...ext} className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>
+                <a {...ext} className={link} href={`https://github.com/${OWNER}/${p.repo}`}>Repo</a>
+                <a {...ext} className={link} href={`https://github.com/users/${OWNER}/projects/${p.project}`}>Board</a>
             </span>
         </li>
     );
