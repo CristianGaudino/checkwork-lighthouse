@@ -15,6 +15,8 @@ export const metadata: Metadata = {
     applicationName: NAME,
     robots: { index: false, follow: false },
     icons: { icon: '/favicon.svg', apple: '/apple-touch-icon.png' },
+    // Opens full screen from an iPhone's home screen, like an app
+    appleWebApp: { capable: true, title: 'Lighthouse', statusBarStyle: 'black-translucent' },
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#0B0F1F' };
@@ -26,6 +28,9 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     return (
         <html lang="en-IE" className={`${sora.variable} ${inter.variable}`}>
             <body className="bg-canvas font-sans text-fg antialiased">
+                {/* The manifest makes Lighthouse installable. use-credentials sends the Access cookie with it; without that,
+                    browsers fetch it cookie-less, Access answers with its login page, and install quietly fails. React puts this in <head>. */}
+                <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
                 <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-fg focus:px-4 focus:py-2 focus:text-canvas">Skip to content</a>
                 <header className={`flex h-16 items-center border-b border-line ${edge}`}>
                     <Link href="/" className="flex items-center gap-2 font-display text-base font-semibold">

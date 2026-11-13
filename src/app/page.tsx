@@ -14,7 +14,9 @@ import { Board } from './_sections/Board';
 import { ClaudeSessions } from './_sections/Claude';
 import { cell, ext, Heading, link, Problem } from './_sections/ui';
 import { Ask } from './_sections/Ask';
-import { incidentHelp, morningBrief } from './ask';
+import { incidentHelp, morningBrief, refresh } from './ask';
+import { approvePr, mergePr, newIssue } from './act';
+import { ActButton, NewIssue } from './_sections/Act';
 import { MODEL } from '@/lib/ask';
 
 export const metadata = { title: 'Today' };
@@ -41,6 +43,8 @@ export default async function Today() {
             <h1 className="text-4xl font-semibold sm:text-5xl">{heading}</h1>
             <nav aria-label="Sections" className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
                 {jumps.map(([id, label]) => <a key={id} className={link} href={`#${id}`}>{label}</a>)}
+                {/* Answers are remembered for a minute or more (src/lib/memo.ts); this fetches everything now */}
+                <form action={refresh}><button type="submit" className={`${link} text-fg-muted`}>Refresh</button></form>
             </nav>
             <Ask action={morningBrief} label="Write my morning brief" note={`One Claude call (${MODEL}), a few cents, only when pressed`} />
 
@@ -50,6 +54,7 @@ export default async function Today() {
                         {tasks.map(t => <TaskItem key={`${t.project} ${t.action} ${t.title}`} task={t} local={Boolean(local)} />)}
                     </ul>
                 )}
+            <NewIssue action={newIssue} repos={PROJECTS.map(p => ({ repo: p.repo, name: p.name }))} />
 
             <Suspense fallback={<p className="mt-14 text-sm text-fg-muted">Loading the board</p>}>
                 <Board local={Boolean(local)} />
@@ -219,6 +224,13 @@ function TaskItem({ task, local }: { task: Task; local: boolean }) {
                 {/* Only work that lives on GitHub (a PR, a release, a repo) is something Claude Code can pick up */}
                 {local && task.href.startsWith(`https://github.com/${OWNER}/`) && <a className={link} href={askHref(`${task.action} ${task.title ?? ''} in ${task.project}: ${task.href}`)} title="Opens Claude Code in your VS Code window with this as the prompt">Ask Claude</a>}
             </p>
+            {task.pr && (
+                <div className="mt-2 flex flex-wrap gap-3 pl-5 sm:col-span-2">
+                    {/* GitHub won't let you approve your own PR (Claude's run as you), so Approve is only for others' */}
+                    {!task.pr.mine && <ActButton action={approvePr} label="Approve" fields={{ repo: task.pr.repo, number: String(task.pr.number) }} />}
+                    {task.pr.canMerge && <ActButton action={mergePr} label="Merge" fields={{ repo: task.pr.repo, number: String(task.pr.number) }} confirm={`Merge #${task.pr.number} into main in ${task.pr.repo}? Merging deploys where the repo deploys on merge.`} />}
+                </div>
+            )}
             {task.incidentRepo && <div className="pl-5 sm:col-span-2"><Ask action={incidentHelp} label="Ask Claude why it is down" note="Reads recent commits and deploys, one call" fields={{ repo: task.incidentRepo }} /></div>}
         </li>
     );
