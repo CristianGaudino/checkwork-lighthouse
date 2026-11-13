@@ -6,6 +6,7 @@ import { z } from 'zod';
  */
 
 export type SiteTraffic = { visits: number; views: number; topPaths: { path: string; views: number }[] };
+/** `cpuP99` in milliseconds. */
 export type WorkerHealth = { requests: number; errors: number; cpuP99: number | null };
 export type Analytics = { traffic: Map<string, SiteTraffic>; workers: Map<string, WorkerHealth> };
 
@@ -62,7 +63,8 @@ export function summarise(raw: unknown): Analytics {
     const workers = new Map<string, WorkerHealth>();
     for (const w of account?.workers ?? []) {
         const prev = workers.get(w.dimensions.scriptName);
-        const cpu = w.quantiles?.cpuTimeP99 ?? null;
+        // Cloudflare reports CPU time in microseconds (a live check showed 675088 for a 0.68 s p99)
+        const cpu = w.quantiles?.cpuTimeP99 == null ? null : w.quantiles.cpuTimeP99 / 1000;
         workers.set(w.dimensions.scriptName, {
             requests: (prev?.requests ?? 0) + w.sum.requests,
             errors: (prev?.errors ?? 0) + w.sum.errors,

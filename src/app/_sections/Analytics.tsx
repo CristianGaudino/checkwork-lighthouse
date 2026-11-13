@@ -38,7 +38,7 @@ export function Analytics({ rows, data, problem, setup }: { rows: Row[]; data?: 
                                             <td className={`${cell} max-w-56 truncate text-fg-muted`}>{t?.topPaths[0]?.path ?? '–'}</td>
                                             <td className={cell}>{w ? num.format(w.requests) : '–'}</td>
                                             <td className={`${cell} ${rate > 0.01 ? 'text-bad' : 'text-fg-muted'}`}>{w ? `${num.format(w.errors)} (${pct.format(rate)})` : '–'}</td>
-                                            <td className={`${cell} text-fg-muted`}>{w?.cpuP99 != null ? `${w.cpuP99.toFixed(1)} ms` : '–'}</td>
+                                            <td className={`${cell} text-fg-muted`}>{w?.cpuP99 != null ? `${num.format(Math.round(w.cpuP99))} ms` : '–'}</td>
                                         </tr>
                                     );
                                 })}
