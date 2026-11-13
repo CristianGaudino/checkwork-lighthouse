@@ -1,32 +1,47 @@
-import type { Project } from '../../lighthouse.config';
+import { OWNER, type Project } from '../../lighthouse.config';
 import type { PullRequest, RepoStatus } from './github';
 
-export type Row = Project & { repoStatus: RepoStatus; attention: number; reasons: string[] };
+/** One thing for the owner to do, worded as the action, linking to where it is done. */
+export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string };
+export type Light = 'bad' | 'warn' | 'ok';
+export type ProjectState = Project & { light: Light; repoStatus: RepoStatus };
 
 const STALE_MS = 3 * 86_400_000;
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-/** What needs the owner, worst first. Lower `attention` sorts higher; ties keep the config's order. */
-export function buildRows(projects: Project[], repos: RepoStatus[], now = Date.now()): Row[] {
-    const rows = projects.map((p, i) => {
+function prTask(project: string, pr: PullRequest, now: number): Task | null {
+    if (pr.draft) return null;
+    const stale = now - Date.parse(pr.updatedAt) > STALE_MS;
+    const detail = `${pr.author}, updated ${ago(pr.updatedAt, now)}${stale ? ', gone quiet' : ''}, ${CHECK_LABEL[pr.checks]}`;
+    const base = { project, title: `#${pr.number} ${pr.title}`, detail, href: pr.url };
+    if (pr.checks === 'failing') return { ...base, level: 1, action: 'Fix checks on' };
+    if (pr.review === 'changes') return { ...base, level: 2, action: 'Update' };
+    if (pr.review === 'approved' && pr.checks !== 'running') return { ...base, level: 2, action: 'Merge' };
+    return { ...base, level: 2, action: 'Review' };
+}
+
+/** The to-do queue (worst first, then config order) and every project's light. */
+export function buildBoard(projects: Project[], repos: RepoStatus[], now = Date.now()) {
+    const tasks: Task[] = [];
+    const states: ProjectState[] = projects.map((p, i) => {
         const r = repos[i] ?? null;
-        const reasons: string[] = [];
-        let attention = 3;
-        const flag = (level: number, reason: string) => { attention = Math.min(attention, level); reasons.push(reason); };
-        if (!r) flag(1, 'Not found on GitHub, or the token cannot see it');
-        else {
-            const live = r.prs.filter(pr => !pr.draft);
-            const failing = live.filter(pr => pr.checks === 'failing').length;
-            if (failing) flag(1, `${failing} PR${failing > 1 ? 's' : ''} failing checks`);
-            const waiting = live.filter(pr => pr.review === 'waiting' || pr.review === 'none').length;
-            if (waiting) flag(2, `${waiting} PR${waiting > 1 ? 's' : ''} to review`);
-            const stale = live.filter(pr => now - Date.parse(pr.updatedAt) > STALE_MS).length;
-            if (stale) flag(2, `${stale} stale PR${stale > 1 ? 's' : ''}`);
-            const unreleased = r.release?.unreleased ?? 0;
-            if (unreleased) flag(2, `${unreleased} commit${unreleased > 1 ? 's' : ''} not released`);
+        const mine: Task[] = [];
+        if (!r) {
+            mine.push({ project: p.name, level: 1, action: 'Check access to', title: p.repo, detail: 'Renamed, or the token cannot see it', href: `https://github.com/${OWNER}/${p.repo}` });
+        } else {
+            for (const pr of r.prs) { const t = prTask(p.name, pr, now); if (t) mine.push(t); }
+            const n = r.release?.unreleased ?? 0;
+            if (r.release && n) {
+                const when = r.release.date ? `, ${ago(r.release.date, now)}` : '';
+                mine.push({ project: p.name, level: 2, action: `Release ${plural(n, 'commit')}`, detail: `On main since ${r.release.tag}${when}`, href: `https://github.com/${OWNER}/${p.repo}/compare/${r.release.tag}...main` });
+            }
         }
-        return { ...p, repoStatus: r, attention, reasons };
+        tasks.push(...mine);
+        const worst = Math.min(3, ...mine.map(t => t.level));
+        return { ...p, repoStatus: r, light: worst === 1 ? 'bad' : worst === 2 ? 'warn' : 'ok' };
     });
-    return rows.map((row, i) => ({ row, i })).sort((a, b) => a.row.attention - b.row.attention || a.i - b.i).map(x => x.row);
+    // Array.prototype.sort is stable, so equal levels keep the config's order
+    return { tasks: tasks.sort((a, b) => a.level - b.level), projects: states };
 }
 
 const rtf = new Intl.RelativeTimeFormat('en-IE', { numeric: 'auto' });
@@ -39,5 +54,4 @@ export function ago(iso: string, now = Date.now()): string {
     return 'just now';
 }
 
-export const CHECK_LABEL: Record<PullRequest['checks'], string> = { passing: 'Checks pass', failing: 'Checks fail', running: 'Checks running', none: 'No checks' };
-export const REVIEW_LABEL: Record<PullRequest['review'], string> = { approved: 'Approved', changes: 'Changes asked', waiting: 'Needs review', none: 'No review' };
+const CHECK_LABEL: Record<PullRequest['checks'], string> = { passing: 'checks pass', failing: 'checks fail', running: 'checks running', none: 'no checks' };

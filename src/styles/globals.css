@@ -10,9 +10,10 @@
     --line:       rgb(255 255 255 / 0.11);
     --accent:     #6366f1; /* Indigo */
     --accent-alt: #a78bfa; /* Lavender */
-    --ok:         #4ade80; /* 10:1 on surface */
-    --warn:       #fbbf24; /* 10:1 on surface */
-    --bad:        #f87171; /* 6:1 on surface */
+    /* Status lights, toned to sit inside the brand rather than raw traffic-light colours */
+    --ok:         #4cc38a; /* 8.6:1 on canvas */
+    --warn:       #e5a33d; /* 8.7:1 on canvas */
+    --bad:        #e5484d; /* 4.9:1 on canvas, 4.5:1 on surface */
     color-scheme: dark;
 }
 
