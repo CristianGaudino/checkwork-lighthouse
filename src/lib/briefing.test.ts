@@ -6,7 +6,7 @@ it('puts only facts in the brief, splitting the owner from other authors and say
         now: new Date('2026-11-14T08:00:00Z'),
         tasks: [{ project: 'Carright', level: 1, action: 'Site down:', title: 'carright.checkwork.ie', detail: 'Down for 5 minutes', href: 'x' }],
         merged: [{ repo: 'vintage', title: 'Fix stock', author: 'CristianGaudino', mergedAt: 'x' }, { repo: 'checkwork', title: 'New page', author: 'otherdev', mergedAt: 'x' }],
-        minutes: { used: 1985, projected: 4682 },
+        minutes: { used: 1985, projected: 4682, byRepo: [{ repo: 'vintage', minutes: 1210, free: false }, { repo: 'checkwork', minutes: 230, free: true }] },
     });
     expect(text).toContain('morning brief for 2026-11-14');
     expect(text).toContain('- Carright: Site down: carright.checkwork.ie (Down for 5 minutes)');
@@ -14,6 +14,8 @@ it('puts only facts in the brief, splitting the owner from other authors and say
     expect(text).toContain('by others:\n- checkwork: New page (by otherdev)');
     expect(text).toContain('Board, in progress:\n- unknown');
     expect(text).toContain('1985 of 2,000 used');
+    expect(text).toContain("Public repos are free and don't count. Private repos' share: vintage 1210");
+    expect(text).not.toContain('checkwork 230');
 });
 
 it('lists commits and runs for an incident, newest first as given', () => {
