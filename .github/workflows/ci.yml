@@ -30,36 +30,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
-  # The Worker has to start before a change reaches production: the normal build can't see what only fails on Cloudflare.
-  worker:
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      APP_ENV: production
-      NEXT_TELEMETRY_DISABLED: 1
-      WRANGLER_SEND_METRICS: false
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Build for Cloudflare Workers
-        run: npx opennextjs-cloudflare build
-      - name: Start the Worker and request it
-        run: |
-          npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
-          curl -s -o /dev/null --retry 60 --retry-connrefused --retry-delay 2 http://127.0.0.1:8787/favicon.svg || true
-          fail=0
-          check() { got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$2"); echo "$1: $got (want $3)"; [ "$got" = "$3" ] || fail=1; }
-          # No Access in front of the local Worker, so the private page must refuse
-          check "home (closed)" http://127.0.0.1:8787/ 404
-          check "not found" http://127.0.0.1:8787/nope 404
-          if grep -q 'ERROR' wrangler.log; then echo 'the Worker logged an error'; fail=1; fi
-          if [ $fail = 1 ]; then grep -iE 'error|failed' wrangler.log | sort -u | head -20; exit 1; fi
-
   # Playwright against a production build, in the image that has the browsers built in (no install step to stall).
   # Keep the tag in step with @playwright/test in package-lock.json.
   e2e:

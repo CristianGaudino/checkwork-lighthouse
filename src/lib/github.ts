@@ -30,6 +30,7 @@ export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: str
 const CHECKS: Record<string, PullRequest['checks']> = { SUCCESS: 'passing', FAILURE: 'failing', ERROR: 'failing', PENDING: 'running', EXPECTED: 'running' };
 const REVIEW = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'waiting' } as const;
 
+// shortcut: the first 20 open PRs per repo, so a repo with more undercounts. Add totalCount if a Dependabot burst ever gets there.
 const FIELDS = `
   pullRequests(states: OPEN, first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) {
     nodes { number title url isDraft updatedAt author { login } reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }

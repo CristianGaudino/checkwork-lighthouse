@@ -15,7 +15,7 @@ Follows the vintage repo's standards (`../vintage/.claude/CLAUDE.md` and README)
 - Auth is Cloudflare Access, checked again by the Worker on every page (`requireAdmin()` in `src/lib/access.ts`, shared with checkwork). Not Clerk.
 - No D1 yet. It comes with alerts (#8), the first feature that needs to remember anything.
 - Anything that spends money on the Claude API (morning brief #13, incident helper #14) runs only when the owner presses a button. Never on a schedule.
-- UptimeRobot: free plan (10 API requests a minute), API v3 (v2 is legacy). Monitors already exist and are matched to projects by address.
+- UptimeRobot: free plan (10 API requests a minute), API v3 (v2 is legacy). Monitors already exist and will be matched to projects by address (#4).
 
 ## Working in git
 - Never develop or commit on `main`. Branch first (`git switch -c <type>/<name>`).
