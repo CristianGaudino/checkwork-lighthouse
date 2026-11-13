@@ -6,7 +6,7 @@ Lives at **https://www.lighthouse.checkwork.ie**, behind Cloudflare Access.
 
 ## Add a project
 
-One line in [`lighthouse.config.ts`](lighthouse.config.ts): the repo, the live address and the GitHub project number. Uptime (next, in #4) will be matched to its UptimeRobot monitor by the address, so no monitor id is needed.
+One line in [`lighthouse.config.ts`](lighthouse.config.ts): the repo, the live address and the GitHub project number. Uptime is matched to its UptimeRobot monitor by the address (with or without www), so no monitor id is needed. A project with no monitor shows as a task.
 
 ## Run it locally
 
