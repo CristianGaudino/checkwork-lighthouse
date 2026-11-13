@@ -18,6 +18,7 @@ const Tag = z.object({
     target: z.object({ committedDate: z.string().optional(), target: z.object({ committedDate: z.string().optional() }).optional() }),
 });
 const Repo = z.object({
+    isPrivate: z.boolean().optional(),
     pullRequests: z.object({ nodes: z.array(Pr) }),
     refs: z.object({ nodes: z.array(Tag) }),
     pkg: z.object({ text: z.string().nullable() }).nullable().optional(), // null when the repo has no package.json at its root
@@ -44,7 +45,7 @@ export type PullRequest = {
     checks: 'passing' | 'failing' | 'running' | 'none';
 };
 /** `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site. */
-export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; versions: Record<string, string> } | null;
+export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; isPrivate: boolean; versions: Record<string, string> } | null;
 
 // Rollup states: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED
 const CHECKS: Record<string, PullRequest['checks']> = { SUCCESS: 'passing', FAILURE: 'failing', ERROR: 'failing', PENDING: 'running', EXPECTED: 'running' };
@@ -52,6 +53,7 @@ const REVIEW = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQU
 
 // shortcut: the first 20 open PRs per repo, so a repo with more undercounts. Add totalCount if a Dependabot burst ever gets there.
 const FIELDS = `
+  isPrivate
   pullRequests(states: OPEN, first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) {
     nodes { number title url isDraft updatedAt author { login } reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
   }
@@ -85,6 +87,7 @@ export function parseRepo(raw: unknown): RepoStatus {
         })),
         release: tag ? { tag: tag.name, date: tag.target.committedDate ?? tag.target.target?.committedDate ?? null, unreleased: tag.compare?.aheadBy ?? null } : null,
         releasesDeploy: Boolean(repo.releaseWorkflow),
+        isPrivate: repo.isPrivate ?? true,
         versions: readVersions(repo.pkg?.text),
     };
 }
