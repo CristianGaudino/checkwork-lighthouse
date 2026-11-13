@@ -4,6 +4,7 @@ import { ago, buildBoard, span, type Light, type ProjectState, type Task } from 
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { buildDrift } from '@/lib/drift';
 import { needsLook, readLocalRepos, type LocalRepo } from '@/lib/local';
+import { fetchUsage, INCLUDED, minutesTask, summarise, type Minutes } from '@/lib/actions';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
 export const metadata = { title: 'Today' };
@@ -31,6 +32,18 @@ async function loadUptime(): Promise<{ uptimes?: (Uptime | null)[]; problem?: st
     }
 }
 
+async function loadMinutes(publicRepos: Promise<Set<string>>): Promise<{ minutes?: Minutes; problem?: string }> {
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) return {}; // loadRepos already says the token is missing
+    try {
+        const [items, free] = await Promise.all([fetchUsage(token), publicRepos]);
+        return { minutes: summarise(items, free) };
+    } catch (error) {
+        console.error('Could not load Actions usage', error);
+        return { problem: 'No Actions minutes: GitHub refused the billing report. The token needs the Plan (read) account permission.' };
+    }
+}
+
 const STATE: Record<Uptime['state'], string> = { up: 'Up', down: 'Down', paused: 'Paused', unknown: 'Checking' };
 
 function uptimeText(u: Uptime | null | undefined) {
@@ -46,15 +59,22 @@ const ext = { target: '_blank', rel: 'noreferrer' } as const;
 
 export default async function Today() {
     await requireAdmin();
-    const [{ repos, problem }, uptime, local] = await Promise.all([loadRepos(), loadUptime(), readLocalRepos()]);
-    const { tasks, projects } = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
+    const reposLoad = loadRepos();
+    // The billing report is fetched alongside; it only needs the repos' visibility to count the private ones
+    const publicRepos = reposLoad.then(({ repos }) => new Set(PROJECTS.filter((_, i) => repos[i]?.isPrivate === false).map(p => p.repo)));
+    const [{ repos, problem }, uptime, local, usage] = await Promise.all([reposLoad, loadUptime(), readLocalRepos(), loadMinutes(publicRepos)]);
+    const board = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
+    const projects = board.projects;
+    const minutes = usage.minutes && minutesTask(usage.minutes);
+    // Stable sort: the minutes task slots in by level, after the project tasks of the same level
+    const tasks = minutes ? [...board.tasks, minutes].sort((a, b) => a.level - b.level) : board.tasks;
     const heading = tasks.length === 0 && (problem || uptime.problem) ? 'Today' : tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
 
     return (
         <>
             <h1 className="text-4xl font-semibold sm:text-5xl">{heading}</h1>
 
-            {[problem, uptime.problem].filter(Boolean).map(text => (
+            {[problem, uptime.problem, usage.problem].filter(Boolean).map(text => (
                 <p key={text} role="status" className="mt-6 max-w-2xl rounded-xl border border-warn/40 px-4 py-3 text-sm text-warn">{text}</p>
             ))}
             {tasks.length > 0 && (
@@ -70,7 +90,45 @@ export default async function Today() {
                 {projects.map(p => <ProjectItem key={p.repo} p={p} known={!problem} />)}
             </ul>
 
+            {usage.minutes && <ActionsMinutes m={usage.minutes} />}
+
             {!problem && <Versions repos={repos} />}
+        </>
+    );
+}
+
+const num = new Intl.NumberFormat('en-IE');
+const day = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+
+/** The shared Actions allowance: one bar for the month (the accent, amber when on pace to go over), then each repo's share. */
+function ActionsMinutes({ m }: { m: Minutes }) {
+    const pct = (x: number) => `${Math.min(100, (x / INCLUDED) * 100)}%`;
+    const over = m.projected > INCLUDED;
+    const lastDay = new Date(m.monthEnd.getTime() - 86_400_000);
+    const top = Math.max(...m.byRepo.map(r => r.minutes));
+    return (
+        <>
+            <h2 className="mt-14 text-xl font-semibold">Actions minutes</h2>
+            <p className="mt-1 text-sm text-fg-muted tabular-nums">
+                <span className="text-fg">{num.format(m.used)}</span> of {num.format(INCLUDED)} used this month by private repos, on pace for{' '}
+                <span className={over ? 'text-warn' : 'text-fg'}>{num.format(m.projected)}</span> by {day.format(lastDay)}
+            </p>
+            <div className="relative mt-4 h-2 max-w-3xl rounded-full bg-surface" role="img" aria-label={`${num.format(m.used)} of ${num.format(INCLUDED)} minutes used, on pace for ${num.format(m.projected)}`}>
+                {/* The projection sits behind the used bar as a faint extension */}
+                <div className={`absolute inset-y-0 left-0 rounded-full ${over ? 'bg-warn/30' : 'bg-accent/30'}`} style={{ width: pct(m.projected) }} />
+                <div className={`absolute inset-y-0 left-0 rounded-full ${over ? 'bg-warn' : 'bg-accent'}`} style={{ width: pct(m.used) }} />
+            </div>
+            {m.byRepo.length > 0 && (
+                <ul className="mt-6 grid max-w-3xl gap-2 text-sm tabular-nums">
+                    {m.byRepo.map(r => (
+                        <li key={r.repo} className={`grid grid-cols-[minmax(8rem,12rem)_1fr_7rem] items-center gap-4 ${r.free ? 'text-fg-muted' : ''}`}>
+                            <span>{r.repo}</span>
+                            <span className={`h-1 rounded-full ${r.free ? 'bg-fg-muted/15' : 'bg-fg-muted/40'}`} style={{ width: `${(r.minutes / top) * 100}%` }} />
+                            <span className="text-right text-fg-muted">{r.free ? `${num.format(r.minutes)}, free` : num.format(r.minutes)}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </>
     );
 }
