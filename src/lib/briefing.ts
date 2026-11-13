@@ -49,7 +49,7 @@ export async function fetchIncidentFacts(token: string, repo: string): Promise<{
 
 const list = (lines: string[], empty: string) => (lines.length ? lines.map(l => `- ${l}`).join('\n') : `- ${empty}`);
 
-export function briefPrompt(f: { now: Date; tasks: Task[]; board?: Board; merged: Merged[]; minutes?: { used: number; projected: number } }): string {
+export function briefPrompt(f: { now: Date; tasks: Task[]; board?: Board; merged: Merged[]; minutes?: { used: number; projected: number; byRepo: { repo: string; minutes: number; free: boolean }[] } }): string {
     const mine = f.merged.filter(m => m.author === OWNER), others = f.merged.filter(m => m.author !== OWNER);
     return `Write my morning brief for ${f.now.toISOString().slice(0, 10)}: what needs me first, what moved in the last day, and what my other dev shipped. Keep it under 25 lines.
 
@@ -68,7 +68,7 @@ ${list(f.board?.columns['In Progress'].map(c => `${c.project}: ${c.title}`) ?? [
 Board, in review:
 ${list(f.board?.columns['In Review'].map(c => `${c.project}: ${c.title}`) ?? [], 'unknown')}
 
-GitHub Actions minutes: ${f.minutes ? `${f.minutes.used} of 2,000 used by private repos, on pace for ${f.minutes.projected} this month` : 'unknown'}`;
+GitHub Actions minutes: ${f.minutes ? `${f.minutes.used} of 2,000 used by private repos, on pace for ${f.minutes.projected} this month. Public repos are free and don't count. Private repos' share: ${f.minutes.byRepo.filter(r => !r.free).map(r => `${r.repo} ${r.minutes}`).join(', ') || 'none'}` : 'unknown'}`;
 }
 
 export function incidentPrompt(f: { project: string; site: string; down: string; commits: Commit[]; runs: Run[]; workerErrors?: string }): string {
