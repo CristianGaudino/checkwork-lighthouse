@@ -28,7 +28,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
             <body className="bg-canvas font-sans text-fg antialiased">
                 <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-fg focus:px-4 focus:py-2 focus:text-canvas">Skip to content</a>
                 <header className={`flex h-16 items-center border-b border-line ${edge}`}>
-                    <Link href="/" className="flex items-center gap-2.5 font-display text-base font-semibold">
+                    <Link href="/" className="flex items-center gap-2 font-display text-base font-semibold">
                         <Mark className="size-6" />
                         {NAME}
                     </Link>

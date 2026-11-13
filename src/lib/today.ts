@@ -3,17 +3,21 @@ import type { PullRequest, RepoStatus } from './github';
 import type { Uptime } from './uptime';
 
 /** One thing for the owner to do, worded as the action, linking to where it is done. */
-export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string };
+/** `incidentRepo`: set on a site-down task, so the page can offer the incident helper for that repo. */
+export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string };
 export type Light = 'bad' | 'warn' | 'ok';
 export type ProjectState = Project & { light: Light; repoStatus: RepoStatus | undefined; uptime: Uptime | null | undefined };
 
 const STALE_MS = 3 * 86_400_000;
+const DEPENDABOT = 'dependabot'; // the app's login in GraphQL (dependabot[bot] in REST)
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function prTask(project: string, pr: PullRequest, now: number): Task | null {
     if (pr.draft) return null;
     const stale = now - Date.parse(pr.updatedAt) > STALE_MS;
-    const detail = `${pr.author}, updated ${ago(pr.updatedAt, now)}${stale ? ', gone quiet' : ''}, ${CHECK_LABEL[pr.checks]}`;
+    // Your own PRs (and Claude's, which run as you) just say when; anyone else's say who, so the other dev's work stands out
+    const who = pr.author === OWNER ? 'Updated' : `From ${pr.author}, updated`;
+    const detail = `${who} ${ago(pr.updatedAt, now)}${stale ? ', gone quiet' : ''}, ${CHECK_LABEL[pr.checks]}`;
     const base = { project, title: `#${pr.number} ${pr.title}`, detail, href: pr.url };
     if (pr.checks === 'failing') return { ...base, level: 1, action: 'Fix checks on' };
     if (pr.review === 'changes') return { ...base, level: 2, action: 'Update' };
@@ -26,7 +30,7 @@ const MONITORS = 'https://dashboard.uptimerobot.com/monitors';
 function uptimeTask(p: Project, u: Uptime | null): Task | null {
     const site = p.site.replace(/^www\./, '');
     if (!u) return { project: p.name, level: 2, action: 'Add a monitor for', title: site, detail: 'UptimeRobot is not watching it', href: MONITORS };
-    if (u.state === 'down') return { project: p.name, level: 1, action: 'Site down:', title: site, detail: u.seconds === null ? 'Per UptimeRobot' : `Down for ${span(u.seconds)}`, href: `${MONITORS}/${u.id}` };
+    if (u.state === 'down') return { project: p.name, level: 1, action: 'Site down:', title: site, detail: u.seconds === null ? 'Per UptimeRobot' : `Down for ${span(u.seconds)}`, href: `${MONITORS}/${u.id}`, incidentRepo: p.repo };
     if (u.state === 'paused') return { project: p.name, level: 2, action: 'Resume monitoring for', title: site, detail: 'The UptimeRobot monitor is paused', href: `${MONITORS}/${u.id}` };
     return null;
 }
@@ -46,7 +50,13 @@ export function buildBoard(projects: Project[], repos: RepoStatus[] | undefined,
         if (r === null) {
             mine.push({ project: p.name, level: 1, action: 'Check access to', title: p.repo, detail: 'Renamed, or the token cannot see it', href: `https://github.com/${OWNER}/${p.repo}` });
         } else if (r) {
-            for (const pr of r.prs) { const t = prTask(p.name, pr, now); if (t) mine.push(t); }
+            const bots = r.prs.filter(pr => !pr.draft && pr.author === DEPENDABOT);
+            for (const pr of r.prs) { if (pr.author === DEPENDABOT) continue; const t = prTask(p.name, pr, now); if (t) mine.push(t); }
+            // Dependency updates are one task per repo, so a batch of them doesn't bury the real work
+            if (bots.length) {
+                const failing = bots.filter(pr => pr.checks === 'failing').length;
+                mine.push({ project: p.name, level: failing ? 1 : 2, action: `Review ${plural(bots.length, 'Dependabot update')}`, detail: failing ? `${failing} with failing checks` : 'Dependency bumps', href: `https://github.com/${OWNER}/${p.repo}/pulls/app%2Fdependabot` });
+            }
             const n = r.release?.unreleased ?? 0;
             // Only where releases deploy: a repo that deploys every merge has nothing waiting
             if (r.release && n && r.releasesDeploy) {

@@ -1,48 +1,23 @@
+import { Suspense } from 'react';
 import { requireAdmin } from '@/lib/access';
-import { fetchRepos, type RepoStatus } from '@/lib/github';
-import { ago, buildBoard, span, type Light, type ProjectState, type Task } from '@/lib/today';
-import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
+import type { RepoStatus } from '@/lib/github';
+import { ago, span, type Light, type ProjectState, type Task } from '@/lib/today';
+import type { Uptime } from '@/lib/uptime';
 import { buildDrift } from '@/lib/drift';
 import { needsLook, readLocalRepos, type LocalRepo } from '@/lib/local';
-import { fetchUsage, INCLUDED, minutesTask, summarise, type Minutes } from '@/lib/actions';
+import { INCLUDED, type Minutes } from '@/lib/minutes';
+import { askHref, readSessions } from '@/lib/claude';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
+import { loadNeon, loadToday } from './_data';
+import { Analytics, Neon } from './_sections/Analytics';
+import { Board } from './_sections/Board';
+import { ClaudeSessions } from './_sections/Claude';
+import { cell, ext, Heading, link, Problem } from './_sections/ui';
+import { Ask } from './_sections/Ask';
+import { incidentHelp, morningBrief } from './ask';
+import { MODEL } from '@/lib/ask';
 
 export const metadata = { title: 'Today' };
-
-async function loadRepos(): Promise<{ repos: RepoStatus[]; problem?: string }> {
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) return { repos: [], problem: 'No GitHub data: set GITHUB_TOKEN on the Worker (or in .env.local) to see PRs and releases.' };
-    try {
-        return { repos: await fetchRepos(PROJECTS, token) };
-    } catch (error) {
-        console.error('Could not load GitHub', error);
-        return { repos: [], problem: 'GitHub did not answer, so PRs and releases are missing. Reload in a minute.' };
-    }
-}
-
-async function loadUptime(): Promise<{ uptimes?: (Uptime | null)[]; problem?: string }> {
-    const key = process.env.UPTIMEROBOT_API_KEY;
-    if (!key) return { problem: 'No uptime data: set UPTIMEROBOT_API_KEY on the Worker (or in .env.local).' };
-    try {
-        return { uptimes: matchUptime(PROJECTS, await fetchMonitors(key)) };
-    } catch (error) {
-        console.error('Could not load UptimeRobot', error);
-        // The free plan allows 10 requests a minute, so a burst of reloads can hit it
-        return { problem: 'UptimeRobot did not answer, so uptime is missing. Reload in a minute.' };
-    }
-}
-
-async function loadMinutes(publicRepos: Promise<Set<string>>): Promise<{ minutes?: Minutes; problem?: string }> {
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) return {}; // loadRepos already says the token is missing
-    try {
-        const [items, free] = await Promise.all([fetchUsage(token), publicRepos]);
-        return { minutes: summarise(items, free) };
-    } catch (error) {
-        console.error('Could not load Actions usage', error);
-        return { problem: 'No Actions minutes: GitHub refused the billing report. The token needs the Plan (read) account permission.' };
-    }
-}
 
 const STATE: Record<Uptime['state'], string> = { up: 'Up', down: 'Down', paused: 'Paused', unknown: 'Checking' };
 
@@ -53,42 +28,45 @@ function uptimeText(u: Uptime | null | undefined) {
 }
 
 const LIGHT: Record<Light, string> = { bad: 'bg-bad', warn: 'bg-warn', ok: 'bg-ok' };
-const link = 'underline-offset-4 hover:text-fg hover:underline';
-// Every link leaves for another site (GitHub, UptimeRobot, the projects), so it opens in a new tab and Lighthouse stays put
-const ext = { target: '_blank', rel: 'noreferrer' } as const;
 
 export default async function Today() {
     await requireAdmin();
-    const reposLoad = loadRepos();
-    // The billing report is fetched alongside; it only needs the repos' visibility to count the private ones
-    const publicRepos = reposLoad.then(({ repos }) => new Set(PROJECTS.filter((_, i) => repos[i]?.isPrivate === false).map(p => p.repo)));
-    const [{ repos, problem }, uptime, local, usage] = await Promise.all([reposLoad, loadUptime(), readLocalRepos(), loadMinutes(publicRepos)]);
-    const board = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
-    const projects = board.projects;
-    const minutes = usage.minutes && minutesTask(usage.minutes);
-    // Stable sort: the minutes task slots in by level, after the project tasks of the same level
-    const tasks = minutes ? [...board.tasks, minutes].sort((a, b) => a.level - b.level) : board.tasks;
+    const [{ repos, problem, uptime, usage, analytics, tasks, projects, rows }, local, sessions, neon] = await Promise.all([loadToday(), readLocalRepos(), readSessions(), loadNeon()]);
+    const jumps = [['board', 'Board'], ['projects', 'Projects'], sessions && ['claude', 'Claude'], local && ['this-pc', 'This PC'], ['traffic', 'Traffic'], ['neon', 'Neon'], usage.minutes && ['minutes', 'Actions'], !problem && ['versions', 'Versions']]
+        .filter((j): j is string[] => Array.isArray(j));
     const heading = tasks.length === 0 && (problem || uptime.problem) ? 'Today' : tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
 
     return (
         <>
             <h1 className="text-4xl font-semibold sm:text-5xl">{heading}</h1>
+            <nav aria-label="Sections" className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
+                {jumps.map(([id, label]) => <a key={id} className={link} href={`#${id}`}>{label}</a>)}
+            </nav>
+            <Ask action={morningBrief} label="Write my morning brief" note={`One Claude call (${MODEL}), a few cents, only when pressed`} />
 
-            {[problem, uptime.problem, usage.problem].filter(Boolean).map(text => (
-                <p key={text} role="status" className="mt-6 max-w-2xl rounded-xl border border-warn/40 px-4 py-3 text-sm text-warn">{text}</p>
-            ))}
+            {[problem, uptime.problem, usage.problem].filter(Boolean).map(text => <Problem key={text}>{text}</Problem>)}
             {tasks.length > 0 && (
                     <ul className="mt-8 divide-y divide-line border-y border-line">
-                        {tasks.map(t => <TaskItem key={`${t.project} ${t.action} ${t.title}`} task={t} />)}
+                        {tasks.map(t => <TaskItem key={`${t.project} ${t.action} ${t.title}`} task={t} local={Boolean(local)} />)}
                     </ul>
                 )}
 
-            {local && <ThisPc root={local.root} repos={local.repos} />}
+            <Suspense fallback={<p className="mt-14 text-sm text-fg-muted">Loading the board</p>}>
+                <Board local={Boolean(local)} />
+            </Suspense>
 
-            <h2 className="mt-14 text-xl font-semibold">Projects</h2>
+            <Heading id="projects">Projects</Heading>
             <ul className="mt-4 divide-y divide-line border-y border-line">
                 {projects.map(p => <ProjectItem key={p.repo} p={p} known={!problem} />)}
             </ul>
+
+            {sessions && <ClaudeSessions sessions={sessions} />}
+
+            {local && <ThisPc root={local.root} repos={local.repos} />}
+
+            <Analytics rows={rows} data={analytics.data} problem={analytics.problem} setup={analytics.setup} />
+
+            <Neon projects={neon.projects} problem={neon.problem} setup={neon.setup} />
 
             {usage.minutes && <ActionsMinutes m={usage.minutes} />}
 
@@ -108,7 +86,7 @@ function ActionsMinutes({ m }: { m: Minutes }) {
     const top = Math.max(...m.byRepo.map(r => r.minutes));
     return (
         <>
-            <h2 className="mt-14 text-xl font-semibold">Actions minutes</h2>
+            <Heading id="minutes">Actions minutes</Heading>
             <p className="mt-1 text-sm text-fg-muted tabular-nums">
                 <span className="text-fg">{num.format(m.used)}</span> of {num.format(INCLUDED)} used this month by private repos, on pace for{' '}
                 <span className={over ? 'text-warn' : 'text-fg'}>{num.format(m.projected)}</span> by {day.format(lastDay)}
@@ -141,7 +119,7 @@ function ThisPc({ root, repos }: { root: string; repos: LocalRepo[] }) {
     const clean = repos.length - look.length;
     return (
         <>
-            <h2 className="mt-14 text-xl font-semibold">This PC</h2>
+            <Heading id="this-pc">This PC</Heading>
             <p className="mt-1 text-sm text-fg-muted">
                 {root}, as of each repo&apos;s last fetch. {look.length ? `${n(clean, 'other repo is', 'other repos are')} clean.` : `All ${repos.length} repos are clean.`}
             </p>
@@ -187,10 +165,9 @@ function Branches({ label, names }: { label: string; names: string[] }) {
 function Versions({ repos }: { repos: RepoStatus[] }) {
     const { labels, newest, rows } = buildDrift(PROJECTS, repos);
     if (!rows.length) return null;
-    const cell = 'px-3 py-2.5 first:pl-0 last:pr-0';
     return (
         <>
-            <h2 className="mt-14 text-xl font-semibold">Versions</h2>
+            <Heading id="versions">Versions</Heading>
             <p className="mt-1 text-sm text-fg-muted">What each package.json asks for. Amber is behind the newest version another repo uses.</p>
             {/* relative: keeps the sr-only header (absolutely positioned) inside the scroll box instead of widening the page */}
             <div className="relative mt-4 overflow-x-auto border-y border-line">
@@ -224,7 +201,8 @@ function Versions({ repos }: { repos: RepoStatus[] }) {
     );
 }
 
-function TaskItem({ task }: { task: Task }) {
+/** `local`: running under `npm run dev`, where an Ask Claude link can open Claude Code in VS Code with the task as its prompt. */
+function TaskItem({ task, local }: { task: Task; local: boolean }) {
     return (
         <li className="grid gap-1 py-4 sm:grid-cols-[1fr_auto] sm:gap-x-6">
             <a {...ext} href={task.href} className="group flex min-w-0 items-start gap-3 text-base">
@@ -236,7 +214,12 @@ function TaskItem({ task }: { task: Task }) {
                 </span>
             </a>
             <span className="pl-5 text-sm text-fg-muted sm:row-span-2 sm:pl-0 sm:text-right">{task.project}</span>
-            <p className="pl-5 text-sm text-fg-muted">{task.detail}</p>
+            <p className="flex flex-wrap gap-x-3 pl-5 text-sm text-fg-muted">
+                <span>{task.detail}</span>
+                {/* Only work that lives on GitHub (a PR, a release, a repo) is something Claude Code can pick up */}
+                {local && task.href.startsWith(`https://github.com/${OWNER}/`) && <a className={link} href={askHref(`${task.action} ${task.title ?? ''} in ${task.project}: ${task.href}`)} title="Opens Claude Code in your VS Code window with this as the prompt">Ask Claude</a>}
+            </p>
+            {task.incidentRepo && <div className="pl-5 sm:col-span-2"><Ask action={incidentHelp} label="Ask Claude why it is down" note="Reads recent commits and deploys, one call" fields={{ repo: task.incidentRepo }} /></div>}
         </li>
     );
 }

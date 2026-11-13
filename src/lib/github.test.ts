@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { buildQuery, parseRepo } from './github';
+import { buildQuery, parseRepo, workerName } from './github';
 
 const pr = (over: object = {}) => ({
     number: 12, title: 'Fix the thing', url: 'https://github.com/o/r/pull/12', isDraft: false, updatedAt: '2026-11-10T09:00:00Z',
@@ -27,4 +27,9 @@ it('returns null for a repo GitHub could not find, and quotes repo names in the 
     expect(parseRepo(null)).toBeNull();
     expect(parseRepo({ pullRequests: 'surprise' })).toBeNull();
     expect(buildQuery([{ name: 'X', repo: 'a"b', site: 'x', project: 1 }])).toContain('name: "a\\"b"');
+});
+
+it('reads the Worker name from wrangler.jsonc, not a binding name', () => {
+    expect(workerName('{\n\t// comment with "name": "nope"\n\t"$schema": "x",\n\t"name": "how-many",\n\t"main": "w.js",\n\t"send_email": [{ "name": "EMAIL" }]\n}')).toBe('how-many');
+    expect(workerName(null)).toBeNull();
 });

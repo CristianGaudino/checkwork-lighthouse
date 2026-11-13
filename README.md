@@ -42,8 +42,13 @@ On the Worker (Cloudflare dashboard, Workers & Pages, lighthouse, Settings, Vari
 
 | Secret | What for |
 |---|---|
-| `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Pull requests and Metadata. |
+| `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Issues, Pull requests, Actions and Metadata, plus the account permission Plan (Actions minutes). |
 | `UPTIMEROBOT_API_KEY` | UptimeRobot's read-only API key. |
+| `GITHUB_PROJECTS_TOKEN` | Classic token with only `read:project`, for the board: fine-grained tokens can't read projects owned by a personal account. |
+| `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read) for traffic and Worker errors. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
+| `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account the sites run in. |
+| `NEON_API_KEY` | Neon API key, for compute and storage use. |
+| `ANTHROPIC_API_KEY` | For the morning brief and the incident helper. Spent only when their buttons are pressed. |
 | `ACCESS_TEAM_DOMAIN` | Your Access team domain, such as `plain-tree-3979.cloudflareaccess.com`. |
 | `ACCESS_AUD` | The audience tag of the Access application covering the whole site. |
 
