@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/access';
 import { fetchRepos, type RepoStatus } from '@/lib/github';
-import { ago, buildBoard, type Light, type ProjectState, type Task } from '@/lib/today';
+import { ago, buildBoard, span, type Light, type ProjectState, type Task } from '@/lib/today';
+import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
 export const metadata = { title: 'Today' };
@@ -16,24 +17,45 @@ async function loadRepos(): Promise<{ repos: RepoStatus[]; problem?: string }> {
     }
 }
 
+async function loadUptime(): Promise<{ uptimes?: (Uptime | null)[]; problem?: string }> {
+    const key = process.env.UPTIMEROBOT_API_KEY;
+    if (!key) return { problem: 'No uptime data: set UPTIMEROBOT_API_KEY on the Worker (or in .env.local).' };
+    try {
+        return { uptimes: matchUptime(PROJECTS, await fetchMonitors(key)) };
+    } catch (error) {
+        console.error('Could not load UptimeRobot', error);
+        // The free plan allows 10 requests a minute, so a burst of reloads can hit it
+        return { problem: 'UptimeRobot did not answer, so uptime is missing. Reload in a minute.' };
+    }
+}
+
+const STATE: Record<Uptime['state'], string> = { up: 'Up', down: 'Down', paused: 'Paused', unknown: 'Checking' };
+
+function uptimeText(u: Uptime | null | undefined) {
+    if (u === undefined) return '';
+    if (!u) return 'No monitor';
+    return u.seconds === null || u.state === 'paused' || u.state === 'unknown' ? STATE[u.state] : `${STATE[u.state]} for ${span(u.seconds)}`;
+}
+
 const LIGHT: Record<Light, string> = { bad: 'bg-bad', warn: 'bg-warn', ok: 'bg-ok' };
 const link = 'underline-offset-4 hover:text-fg hover:underline';
 
 export default async function Today() {
     await requireAdmin();
-    const { repos, problem } = await loadRepos();
-    const { tasks, projects } = buildBoard(PROJECTS, repos);
-    const heading = problem ? 'Today' : tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
+    const [{ repos, problem }, uptime] = await Promise.all([loadRepos(), loadUptime()]);
+    const { tasks, projects } = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
+    const heading = tasks.length === 0 && (problem || uptime.problem) ? 'Today' : tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
 
     return (
         <>
             <h1 className="text-4xl font-semibold sm:text-5xl">{heading}</h1>
 
-            {problem
-                ? <p role="status" className="mt-6 max-w-2xl rounded-xl border border-warn/40 px-4 py-3 text-sm text-warn">{problem}</p>
-                : tasks.length > 0 && (
+            {[problem, uptime.problem].filter(Boolean).map(text => (
+                <p key={text} role="status" className="mt-6 max-w-2xl rounded-xl border border-warn/40 px-4 py-3 text-sm text-warn">{text}</p>
+            ))}
+            {tasks.length > 0 && (
                     <ul className="mt-8 divide-y divide-line border-y border-line">
-                        {tasks.map(t => <TaskItem key={t.href + t.action} task={t} />)}
+                        {tasks.map(t => <TaskItem key={`${t.project} ${t.action} ${t.title}`} task={t} />)}
                     </ul>
                 )}
 
@@ -65,11 +87,12 @@ function TaskItem({ task }: { task: Task }) {
 function ProjectItem({ p, known }: { p: ProjectState; known: boolean }) {
     const release = p.repoStatus?.release;
     return (
-        <li className="grid gap-x-6 gap-y-1 py-3 text-sm sm:grid-cols-[minmax(10rem,14rem)_1fr_auto] sm:items-baseline">
+        <li className="grid gap-x-6 gap-y-1 py-3 text-sm sm:grid-cols-[minmax(10rem,14rem)_minmax(8rem,11rem)_1fr_auto] sm:items-baseline">
             <span className="flex items-center gap-3 text-base font-medium">
                 <span aria-hidden className={`size-2 shrink-0 rounded-full ${known ? LIGHT[p.light] : 'bg-fg-muted'}`} />
                 {p.name}
             </span>
+            <span className={`pl-5 sm:pl-0 ${p.uptime?.state === 'down' ? 'text-bad' : 'text-fg-muted'}`}>{uptimeText(p.uptime)}</span>
             <span className="pl-5 text-fg-muted sm:pl-0">
                 {!known ? '' : release ? `${release.tag}, ${release.date ? ago(release.date) : 'date unknown'}` : 'Not released yet'}
             </span>

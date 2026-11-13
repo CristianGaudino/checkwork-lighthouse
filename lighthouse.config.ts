@@ -1,6 +1,6 @@
 /**
  * The projects Lighthouse watches. To add one, add a line: the GitHub repo (under OWNER), the live address, and the
- * GitHub project number (the number in its URL, github.com/users/<owner>/projects/<n>). Uptime (#4) will be matched by the
+ * GitHub project number (the number in its URL, github.com/users/<owner>/projects/<n>). Uptime is matched by the
  * address, so the UptimeRobot monitor needs no id here.
  */
 export const OWNER = 'CristianGaudino';
