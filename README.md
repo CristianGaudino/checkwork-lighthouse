@@ -1,4 +1,4 @@
-# Lighthouse
+# Checkwork Lighthouse
 
 Every Checkwork site, repo and release on one screen: what is down, what needs a review, what is waiting to ship.
 

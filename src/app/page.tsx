@@ -23,7 +23,7 @@ export default async function Today() {
     await requireAdmin();
     const { repos, problem } = await loadRepos();
     const { tasks, projects } = buildBoard(PROJECTS, repos);
-    const heading = problem ? 'Lighthouse' : tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
+    const heading = problem ? 'Today' : tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
 
     return (
         <>

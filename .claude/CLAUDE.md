@@ -1,4 +1,4 @@
-# Lighthouse project rules
+# Checkwork Lighthouse project rules
 
 Read automatically by Claude Code at the start of a session. Edit it like any other file, in a PR.
 
