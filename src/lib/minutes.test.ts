@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { minutesTask, summarise } from './actions';
+import { minutesTask, summarise } from './minutes';
 
 const item = (repositoryName: string, quantity: number, sku = 'Actions Linux', unitType = 'Minutes') => ({ product: 'actions', sku, quantity, unitType, repositoryName });
 

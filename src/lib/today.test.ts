@@ -5,7 +5,7 @@ import { ago, buildBoard, span } from './today';
 const NOW = Date.parse('2026-11-13T12:00:00Z');
 const p = (name: string) => ({ name, repo: name, site: `${name}.ie`, project: 1 });
 const pr = (over: Partial<PullRequest> = {}): PullRequest => ({ number: 1, title: 't', url: 'u', draft: false, updatedAt: '2026-11-13T11:00:00Z', author: 'a', review: 'none', checks: 'passing', ...over });
-const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, isPrivate: true, versions: {} });
+const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, isPrivate: true, worker: null, versions: {} });
 
 it('queues the worst first, keeps config order on ties, and lights each project', () => {
     const { tasks, projects } = buildBoard(
@@ -27,7 +27,7 @@ it('words each PR as the next step, skips drafts, and says when one has gone qui
         pr({ number: 5, updatedAt: '2026-11-01T00:00:00Z' }),
     ])], undefined, NOW);
     expect(tasks.map(t => `${t.action} ${t.title}`)).toEqual(['Merge #2 t', 'Review #3 t', 'Update #4 t', 'Review #5 t']);
-    expect(tasks[3].detail).toBe('a, updated 12 days ago, gone quiet, checks pass');
+    expect(tasks[3].detail).toBe('From a, updated 12 days ago, gone quiet, checks pass');
 });
 
 it('says how long ago in plain words', () => {
@@ -48,6 +48,7 @@ it('turns uptime into tasks: down first, then a missing or paused monitor; nothi
         'Resume monitoring for paused.ie: The UptimeRobot monitor is paused',
     ]);
     expect(tasks[0].href).toBe('https://dashboard.uptimerobot.com/monitors/2');
+    expect(tasks.map(t => t.incidentRepo)).toEqual(['down', undefined, undefined]);
     expect(states.map(s => s.light)).toEqual(['ok', 'bad', 'warn', 'warn']);
     expect(buildBoard(projects, repos, undefined, NOW).tasks).toEqual([]);
     // GitHub unreadable too: no "check access" task for every repo
@@ -61,4 +62,16 @@ it('says durations in whole units', () => {
 it('asks for a release only where releases deploy', () => {
     const merges = { ...repo([], 2)!, releasesDeploy: false };
     expect(buildBoard([p('merges'), p('tags')], [merges, repo([], 2)], undefined, NOW).tasks.map(t => t.project)).toEqual(['tags']);
+});
+
+it('folds Dependabot PRs into one task per repo, and names who opened a PR unless it is the owner', () => {
+    const { tasks } = buildBoard([p('r')], [repo([
+        pr({ number: 1, author: 'dependabot' }), pr({ number: 2, author: 'dependabot', checks: 'failing' }), pr({ number: 3, author: 'dependabot', draft: true }),
+        pr({ number: 4, author: 'CristianGaudino' }),
+    ])], undefined, NOW);
+    expect(tasks.map(t => [t.action, t.detail, t.level])).toEqual([
+        ['Review 2 Dependabot updates', '1 with failing checks', 1],
+        ['Review', 'Updated 1 hour ago, checks pass', 2],
+    ]);
+    expect(tasks[0].href).toBe('https://github.com/CristianGaudino/r/pulls/app%2Fdependabot');
 });

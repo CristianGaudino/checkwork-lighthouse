@@ -4,7 +4,7 @@ import { buildDrift, floor } from './drift';
 import { readVersions } from './github';
 
 const p = (name: string) => ({ name, repo: name, site: `${name}.ie`, project: 1 });
-const repo = (versions: Record<string, string>): RepoStatus => ({ prs: [], release: null, releasesDeploy: false, isPrivate: true, versions });
+const repo = (versions: Record<string, string>): RepoStatus => ({ prs: [], release: null, releasesDeploy: false, isPrivate: true, worker: null, versions });
 
 it('reads the floor of a version spec', () => {
     expect([floor('^16.4.5'), floor('16.4.1'), floor('^4'), floor('>=24 <25'), floor('latest')]).toEqual([[16, 4, 5], [16, 4, 1], [4], [24], []]);

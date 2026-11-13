@@ -23,10 +23,14 @@ const Repo = z.object({
     refs: z.object({ nodes: z.array(Tag) }),
     pkg: z.object({ text: z.string().nullable() }).nullable().optional(), // null when the repo has no package.json at its root
     releaseWorkflow: z.object({ id: z.string() }).nullable().optional(),
+    wrangler: z.object({ text: z.string().nullable() }).nullable().optional(),
 }).nullable();
 
 /** The packages the version table compares, by their label. */
 export const TRACKED = { Next: 'next', React: 'react', OpenNext: '@opennextjs/cloudflare', Wrangler: 'wrangler', Tailwind: 'tailwindcss', TypeScript: 'typescript', Drizzle: 'drizzle-orm', Zod: 'zod', Vitest: 'vitest', Playwright: '@playwright/test' } as const;
+
+/** The Worker's name from wrangler.jsonc: the first top-level "name" (bindings' names sit deeper, after it). */
+export const workerName = (text: string | null | undefined) => text?.match(/^\s*"name"\s*:\s*"([^"]+)"/m)?.[1] ?? null;
 
 /** Declared versions by label (as written, like "^16.4.5"), plus Node from `engines`. A missing or broken package.json gives {}. */
 export function readVersions(text: string | null | undefined): Record<string, string> {
@@ -45,7 +49,7 @@ export type PullRequest = {
     checks: 'passing' | 'failing' | 'running' | 'none';
 };
 /** `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site. */
-export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; isPrivate: boolean; versions: Record<string, string> } | null;
+export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; isPrivate: boolean; worker: string | null; versions: Record<string, string> } | null;
 
 // Rollup states: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED
 const CHECKS: Record<string, PullRequest['checks']> = { SUCCESS: 'passing', FAILURE: 'failing', ERROR: 'failing', PENDING: 'running', EXPECTED: 'running' };
@@ -61,7 +65,8 @@ const FIELDS = `
     nodes { name compare(headRef: "main") { aheadBy } target { ... on Commit { committedDate } ... on Tag { target { ... on Commit { committedDate } } } } }
   }
   pkg: object(expression: "HEAD:package.json") { ... on Blob { text } }
-  releaseWorkflow: object(expression: "HEAD:.github/workflows/release.yml") { id }`;
+  releaseWorkflow: object(expression: "HEAD:.github/workflows/release.yml") { id }
+  wrangler: object(expression: "HEAD:wrangler.jsonc") { ... on Blob { text } }`;
 
 /** One GraphQL query covers every repo (aliases r0, r1...), so the page costs one GitHub request however many projects there are. */
 export const buildQuery = (projects: Project[]) =>
@@ -88,21 +93,27 @@ export function parseRepo(raw: unknown): RepoStatus {
         release: tag ? { tag: tag.name, date: tag.target.committedDate ?? tag.target.target?.committedDate ?? null, unreleased: tag.compare?.aheadBy ?? null } : null,
         releasesDeploy: Boolean(repo.releaseWorkflow),
         isPrivate: repo.isPrivate ?? true,
+        worker: workerName(repo.wrangler?.text),
         versions: readVersions(repo.pkg?.text),
     };
 }
 
-/** Status per project, in the same order. Throws when GitHub can't be reached or refuses the token; a repo GitHub can't find comes back null. */
-export async function fetchRepos(projects: Project[], token: string): Promise<RepoStatus[]> {
+/** One GitHub GraphQL request. Throws on an HTTP error; `data` is undefined when GitHub refused the whole query. */
+export async function githubGraphql(token: string, query: string): Promise<Record<string, unknown> | undefined> {
     const res = await fetch('https://api.github.com/graphql', {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'user-agent': 'lighthouse' },
-        body: JSON.stringify({ query: buildQuery(projects) }),
+        body: JSON.stringify({ query }),
         signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`GitHub: ${res.status}`);
+    return ((await res.json()) as { data?: Record<string, unknown> }).data;
+}
+
+/** Status per project, in the same order. Throws when GitHub can't be reached or refuses the token; a repo GitHub can't find comes back null. */
+export async function fetchRepos(projects: Project[], token: string): Promise<RepoStatus[]> {
     // A repo that is missing or not visible to the token comes back as data null plus an error; the others still load
-    const { data } = (await res.json()) as { data?: Record<string, unknown> };
+    const data = await githubGraphql(token, buildQuery(projects));
     if (!data) throw new Error('GitHub: no data');
     return projects.map((_, i) => parseRepo(data[`r${i}`] ?? null));
 }
