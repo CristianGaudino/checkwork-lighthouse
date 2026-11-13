@@ -5,7 +5,7 @@ import { ago, buildBoard, span } from './today';
 const NOW = Date.parse('2026-11-13T12:00:00Z');
 const p = (name: string) => ({ name, repo: name, site: `${name}.ie`, project: 1 });
 const pr = (over: Partial<PullRequest> = {}): PullRequest => ({ number: 1, title: 't', url: 'u', draft: false, updatedAt: '2026-11-13T11:00:00Z', author: 'a', review: 'none', checks: 'passing', ...over });
-const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, versions: {} });
+const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, versions: {} });
 
 it('queues the worst first, keeps config order on ties, and lights each project', () => {
     const { tasks, projects } = buildBoard(
@@ -56,4 +56,9 @@ it('turns uptime into tasks: down first, then a missing or paused monitor; nothi
 
 it('says durations in whole units', () => {
     expect([span(20), span(60), span(7_200), span(3 * 86_400 + 5)]).toEqual(['1 minute', '1 minute', '2 hours', '3 days']);
+});
+
+it('asks for a release only where releases deploy', () => {
+    const merges = { ...repo([], 2)!, releasesDeploy: false };
+    expect(buildBoard([p('merges'), p('tags')], [merges, repo([], 2)], undefined, NOW).tasks.map(t => t.project)).toEqual(['tags']);
 });
