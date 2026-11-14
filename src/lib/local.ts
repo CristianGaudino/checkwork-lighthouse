@@ -9,6 +9,7 @@ export type LocalRepo = {
     notPushed: string[]; // branches that have never been pushed
     goneRemote: string[]; // branches whose remote branch was deleted, usually a merged PR
     old: string[]; // other branches with no commit for STALE_DAYS
+    install: number | null; // packages the lockfile wants that aren't installed as it says; null without a package-lock.json
 };
 
 const STALE_DAYS = 30;
@@ -34,12 +35,31 @@ export function parseBranches(text: string, current: string, now = Date.now()) {
     return { notPushed, goneRemote, old };
 }
 
-export const needsLook = (r: LocalRepo) => r.changed > 0 || r.ahead > 0 || r.behind > 0 || r.notPushed.length > 0 || r.goneRemote.length > 0;
+type Packages = Record<string, { version?: string; optional?: boolean; devOptional?: boolean; peer?: boolean }>;
+
+/**
+ * How many packages differ between package-lock.json and what npm last installed (node_modules/.package-lock.json).
+ * Compares versions, not file times: switching branches touches the lockfile without changing it. Optional packages
+ * for other platforms are never installed, so their absence doesn't count. Nothing installed: every package counts.
+ */
+export function staleInstall(lock: { packages?: Packages }, installed: { packages?: Packages } | null): number {
+    const want = lock.packages ?? {}, have = installed?.packages ?? {};
+    let n = 0;
+    for (const [name, p] of Object.entries(want)) {
+        if (!name) continue; // "" is the project itself
+        if (have[name] ? have[name].version !== p.version : !(p.optional || p.devOptional || p.peer)) n++;
+    }
+    for (const name of Object.keys(have)) if (!want[name]) n++;
+    return n;
+}
+
+export const needsLook = (r: LocalRepo) => r.changed > 0 || r.ahead > 0 || r.behind > 0 || r.notPushed.length > 0 || r.goneRemote.length > 0 || Boolean(r.install);
 
 /** null outside `next dev`. Reads, never writes: no fetch, no checkout. */
 export async function readLocalRepos(): Promise<{ root: string; repos: LocalRepo[] } | null> {
     if (process.env.NODE_ENV !== 'development') return null;
-    const [{ execFile }, { readdir, stat }, path] = await Promise.all([import('node:child_process'), import('node:fs/promises'), import('node:path')]);
+    const [{ execFile }, { readdir, readFile, stat }, path] = await Promise.all([import('node:child_process'), import('node:fs/promises'), import('node:path')]);
+    const json = (file: string) => readFile(file, 'utf8').then(JSON.parse, () => null);
     const git = (cwd: string, args: string[]) => new Promise<string>((resolve, reject) =>
         execFile('git', args, { cwd, timeout: 10_000, windowsHide: true }, (error, out) => (error ? reject(error) : resolve(out))));
     const root = path.dirname(process.cwd());
@@ -50,7 +70,8 @@ export async function readLocalRepos(): Promise<{ root: string; repos: LocalRepo
         try {
             const status = parseStatus(await git(dir, ['status', '--porcelain=v1', '--branch']));
             const branches = parseBranches(await git(dir, ['for-each-ref', 'refs/heads', '--format=%(refname:short)%09%(upstream)%09%(upstream:track)%09%(committerdate:unix)']), status.branch);
-            return { name, ...status, ...branches };
+            const [lock, installed] = await Promise.all([json(path.join(dir, 'package-lock.json')), json(path.join(dir, 'node_modules', '.package-lock.json'))]);
+            return { name, ...status, ...branches, install: lock ? staleInstall(lock, installed) : null };
         } catch (error) {
             console.error(`Could not read git state of ${name}`, error);
             return null;

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { parseBranches, parseStatus } from './local';
+import { parseBranches, parseStatus, staleInstall } from './local';
 
 it('reads branch, ahead, behind and changed files from git status', () => {
     expect(parseStatus('## main...origin/main [ahead 1, behind 2]\n M a.ts\n?? b.ts\n')).toEqual({ branch: 'main', changed: 2, ahead: 1, behind: 2 });
@@ -20,4 +20,13 @@ it('sorts other branches into never pushed, remote gone and old, skipping the cu
         `fresh\trefs/remotes/origin/fresh\t[ahead 1]\t${recent}`,
     ].join('\n');
     expect(parseBranches(text, 'main', NOW)).toEqual({ notPushed: ['local-only'], goneRemote: ['merged'], old: ['dusty'] });
+});
+
+it('counts packages the lockfile wants that are not installed as it says', () => {
+    const lock = { packages: { '': { version: '1.0.0' }, 'node_modules/a': { version: '1.0.0' }, 'node_modules/b': { version: '2.0.0' }, 'node_modules/@esbuild/linux-x64': { version: '0.1.0', optional: true } } };
+    // In step, the other platform's optional package not installed
+    expect(staleInstall(lock, { packages: { 'node_modules/a': { version: '1.0.0' }, 'node_modules/b': { version: '2.0.0' } } })).toBe(0);
+    // b moved on in a pull, and c was removed from the lockfile
+    expect(staleInstall(lock, { packages: { 'node_modules/a': { version: '1.0.0' }, 'node_modules/b': { version: '1.9.0' }, 'node_modules/c': { version: '1.0.0' } } })).toBe(2);
+    expect(staleInstall(lock, null)).toBe(2);
 });

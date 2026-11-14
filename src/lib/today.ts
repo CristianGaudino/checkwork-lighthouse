@@ -1,5 +1,6 @@
 import { OWNER, type Project } from '../../lighthouse.config';
 import type { PullRequest, RepoStatus } from './github';
+import type { LiveState } from './live';
 import type { Uptime } from './uptime';
 
 /** One thing for the owner to do, worded as the action, linking to where it is done. */
@@ -11,7 +12,13 @@ import type { Uptime } from './uptime';
  */
 export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; deploy?: string; pr?: { repo: string; number: number; mine: boolean; canMerge: boolean } };
 export type Light = 'bad' | 'warn' | 'ok';
-export type ProjectState = Project & { light: Light; repoStatus: RepoStatus | undefined; uptime: Uptime | null | undefined };
+export type ProjectState = Project & { repoStatus: RepoStatus | undefined; uptime: Uptime | null | undefined };
+
+/** Red if any task is level 1, amber for level 2, green with none. */
+export function lightOf(tasks: Task[]): Light {
+    const worst = Math.min(3, ...tasks.map(t => t.level));
+    return worst === 1 ? 'bad' : worst === 2 ? 'warn' : 'ok';
+}
 
 const STALE_MS = 3 * 86_400_000;
 const DEPENDABOT = 'dependabot'; // the app's login in GraphQL (dependabot[bot] in REST)
@@ -30,6 +37,18 @@ function prTask(project: string, repo: string, pr: PullRequest, now: number): Ta
     return { ...base, level: 2, action: 'Review' };
 }
 
+/**
+ * Failing checks on main's newest commit. Red, unless the site already runs that commit: then most likely only the deploy
+ * step failed (out of Actions minutes, say) and it went out another way, so it's amber.
+ */
+export function mainTask(p: Project, r: RepoStatus | undefined, live: LiveState | null): Task | null {
+    if (r?.main.checks !== 'failing') return null;
+    const href = `https://github.com/${OWNER}/${p.repo}/actions?query=branch%3Amain`;
+    return live?.state === 'live'
+        ? { project: p.name, level: 2, action: 'Fix main', detail: 'Checks failed on its newest commit, though the site runs it', href }
+        : { project: p.name, level: 1, action: 'Fix main', detail: 'Checks failed on its newest commit', href };
+}
+
 const MONITORS = 'https://dashboard.uptimerobot.com/monitors';
 
 function uptimeTask(p: Project, u: Uptime | null): Task | null {
@@ -41,7 +60,7 @@ function uptimeTask(p: Project, u: Uptime | null): Task | null {
 }
 
 /**
- * The to-do queue (worst first, then config order) and every project's light.
+ * The to-do queue (worst first, then config order) and every project's state.
  * `repos` and `uptimes` are undefined when GitHub or UptimeRobot could not be read, so an outage there never shows as
  * "repo not found" or "no monitor" for every project.
  */
@@ -70,8 +89,7 @@ export function buildBoard(projects: Project[], repos: RepoStatus[] | undefined,
             }
         }
         tasks.push(...mine);
-        const worst = Math.min(3, ...mine.map(t => t.level));
-        return { ...p, repoStatus: r, uptime, light: worst === 1 ? 'bad' : worst === 2 ? 'warn' : 'ok' };
+        return { ...p, repoStatus: r, uptime };
     });
     // Array.prototype.sort is stable, so equal levels keep the config's order
     return { tasks: tasks.sort((a, b) => a.level - b.level), projects: states };

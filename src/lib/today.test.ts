@@ -1,11 +1,11 @@
 import { expect, it } from 'vitest';
 import type { PullRequest, RepoStatus } from './github';
-import { ago, buildBoard, span } from './today';
+import { ago, buildBoard, lightOf, mainTask, span } from './today';
 
 const NOW = Date.parse('2026-11-13T12:00:00Z');
 const p = (name: string) => ({ name, repo: name, site: `${name}.ie`, project: 1 });
 const pr = (over: Partial<PullRequest> = {}): PullRequest => ({ number: 1, title: 't', url: 'u', draft: false, updatedAt: '2026-11-13T11:00:00Z', author: 'a', review: 'none', checks: 'passing', ...over });
-const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, isPrivate: true, worker: null, versions: {}, main: { head: null, merges: [] } });
+const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, checksPrs: true, deploysWorker: true, isPrivate: true, worker: null, versions: {}, main: { sha: null, head: null, merges: [], checks: 'none' } });
 
 it('queues the worst first, keeps config order on ties, and lights each project', () => {
     const { tasks, projects } = buildBoard(
@@ -15,7 +15,7 @@ it('queues the worst first, keeps config order on ties, and lights each project'
     );
     expect(tasks.map(t => [t.project, t.action])).toEqual([['failing', 'Fix checks on'], ['missing', 'Check access to'], ['unreleased', 'Release 3 commits']]);
     expect(tasks[2]).toMatchObject({ detail: 'On main since v1.0.0, 3 days ago', href: 'https://github.com/CristianGaudino/unreleased/compare/v1.0.0...main' });
-    expect(projects.map(x => x.light)).toEqual(['ok', 'warn', 'bad', 'bad']);
+    expect(projects.map(x => lightOf(tasks.filter(t => t.project === x.name)))).toEqual(['ok', 'warn', 'bad', 'bad']);
 });
 
 it('words each PR as the next step, skips drafts, and says when one has gone quiet', () => {
@@ -49,7 +49,7 @@ it('turns uptime into tasks: down first, then a missing or paused monitor; nothi
     ]);
     expect(tasks[0].href).toBe('https://dashboard.uptimerobot.com/monitors/2');
     expect(tasks.map(t => t.incidentRepo)).toEqual(['down', undefined, undefined]);
-    expect(states.map(s => s.light)).toEqual(['ok', 'bad', 'warn', 'warn']);
+    expect(states.map(s => lightOf(tasks.filter(t => t.project === s.name)))).toEqual(['ok', 'bad', 'warn', 'warn']);
     expect(buildBoard(projects, repos, undefined, NOW).tasks).toEqual([]);
     // GitHub unreadable too: no "check access" task for every repo
     expect(buildBoard(projects, undefined, undefined, NOW).tasks).toEqual([]);
@@ -83,4 +83,11 @@ it('marks PR tasks with what the page needs to merge or approve them', () => {
         { repo: 'r', number: 7, mine: true, canMerge: true },
         { repo: 'r', number: 9, mine: false, canMerge: false }, // changes asked for: no merge
     ]);
+});
+
+it('asks to fix a failing main, in amber when the site already runs it', () => {
+    const failing = { ...repo([])!, main: { sha: null, head: null, merges: [], checks: 'failing' as const } };
+    expect(mainTask(p('r'), repo([]), null)).toBeNull();
+    expect(mainTask(p('r'), failing, { state: 'behind', since: 'x', label: '1 merge not live' })?.level).toBe(1);
+    expect(mainTask(p('r'), failing, { state: 'live', since: 'x' })?.level).toBe(2);
 });

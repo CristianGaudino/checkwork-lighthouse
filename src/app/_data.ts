@@ -1,11 +1,11 @@
 import 'server-only';
-import { fetchRepos, type RepoStatus } from '@/lib/github';
+import { fetchMainRuns, fetchRepos, type PullRequest, type RepoStatus } from '@/lib/github';
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes';
 import { fetchAnalytics, workerTasks, type Analytics as AnalyticsData } from '@/lib/cloudflare';
 import { fetchNeon, type NeonUsage } from '@/lib/neon';
 import { fetchDeployed, fetchLive, liveState, type LiveState } from '@/lib/live';
-import { ago, buildBoard, type Task } from '@/lib/today';
+import { ago, buildBoard, lightOf, mainTask, type Task } from '@/lib/today';
 import { memo, MINUTE } from '@/lib/memo';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
@@ -97,13 +97,28 @@ async function loadDeployed(repos: RepoStatus[]): Promise<Map<string, string>> {
     }
 }
 
+/** Main's checks, from Actions, for the repos whose check results GraphQL keeps from the token (private ones). */
+async function loadMainRuns(repos: RepoStatus[]): Promise<Map<string, PullRequest['checks']>> {
+    const token = process.env.GITHUB_TOKEN;
+    const ask = PROJECTS.flatMap((p, i) => (repos[i]?.main.checks === 'none' && repos[i]!.main.sha ? [{ repo: p.repo, sha: repos[i]!.main.sha! }] : []));
+    if (!token || !ask.length) return new Map();
+    try {
+        return await memo('main-runs', MINUTE, () => fetchMainRuns(token, ask));
+    } catch (error) {
+        console.error('Could not load Actions runs', error);
+        return new Map();
+    }
+}
+
 /** Everything behind the task queue, shared by the page and the morning brief so both see the same picture. */
 export async function loadToday() {
     const reposLoad = loadRepos();
     // The billing report is fetched alongside; it only needs the repos' visibility to count the private ones
     const publicRepos = reposLoad.then(({ repos }) => new Set(PROJECTS.filter((_, i) => repos[i]?.isPrivate === false).map(p => p.repo)));
-    const liveLoad = reposLoad.then(({ repos }) => Promise.all([loadLive([...new Set(repos.flatMap(r => r?.worker ?? []))]), loadDeployed(repos)]));
-    const [{ repos, problem }, uptime, usage, analytics, [deploys, deployed]] = await Promise.all([reposLoad, loadUptime(), loadMinutes(publicRepos), loadAnalytics(), liveLoad]);
+    const liveLoad = reposLoad.then(({ repos }) => Promise.all([loadLive([...new Set(repos.flatMap(r => r?.worker ?? []))]), loadDeployed(repos), loadMainRuns(repos)]));
+    const [{ repos: answered, problem }, uptime, usage, analytics, [deploys, deployed, runs]] = await Promise.all([reposLoad, loadUptime(), loadMinutes(publicRepos), loadAnalytics(), liveLoad]);
+    // Main's checks from Actions where GraphQL couldn't say
+    const repos = answered.map((r, i) => (r && runs.has(PROJECTS[i].repo) ? { ...r, main: { ...r.main, checks: runs.get(PROJECTS[i].repo)! } } : r));
     const board = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
     const rows = PROJECTS.map((p, i) => ({ ...p, worker: repos[i]?.worker ?? null }));
     const account = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -113,6 +128,7 @@ export async function loadToday() {
         return liveState(r, r?.worker ? deploys.deployed?.get(r.worker) : deployed.get(PROJECTS[i].repo));
     });
     const extra: Task[] = [
+        ...PROJECTS.flatMap((p, i) => mainTask(p, repos[i], live[i]) ?? []),
         ...PROJECTS.flatMap((p, i) => {
             const l = live[i];
             if (l?.state !== 'behind') return [];
@@ -126,7 +142,7 @@ export async function loadToday() {
     ];
     // Stable sort: these slot in by level, after the project tasks of the same level
     const tasks = [...board.tasks, ...extra].sort((a, b) => a.level - b.level);
-    // One row per site, in PROJECTS order, for the Sites list and each project's page
-    const sites = board.projects.map((p, i) => ({ p, live: live[i], worker: rows[i].worker }));
+    // One row per site, in PROJECTS order, for the Sites list and each project's page; its light counts every task it has
+    const sites = board.projects.map((p, i) => ({ p, live: live[i], worker: rows[i].worker, light: lightOf(tasks.filter(t => t.project === p.name)) }));
     return { repos, problem, uptime, usage, analytics, deploys, tasks, rows, sites };
 }

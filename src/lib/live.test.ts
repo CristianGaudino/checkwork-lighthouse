@@ -4,8 +4,8 @@ import { lastDeploy, liveState } from './live';
 
 const now = Date.parse('2026-11-13T22:00:00Z');
 const repo = (over: Partial<NonNullable<RepoStatus>> = {}): RepoStatus => ({
-    prs: [], release: null, releasesDeploy: false, isPrivate: true, worker: 'w', versions: {},
-    main: { head: '2026-11-13T21:00:00Z', merges: ['2026-11-13T21:00:00Z', '2026-11-13T20:00:00Z', '2026-11-12T10:00:00Z'] }, ...over,
+    prs: [], release: null, releasesDeploy: false, checksPrs: true, deploysWorker: true, isPrivate: true, worker: 'w', versions: {},
+    main: { sha: null, head: '2026-11-13T21:00:00Z', merges: ['2026-11-13T21:00:00Z', '2026-11-13T20:00:00Z', '2026-11-12T10:00:00Z'], checks: 'passing' }, ...over,
 });
 
 it('counts the merges since the last deploy, and calls a fresh one deploying', () => {
@@ -13,7 +13,7 @@ it('counts the merges since the last deploy, and calls a fresh one deploying', (
     expect(liveState(repo(), '2026-11-13T19:00:00Z', now)).toMatchObject({ state: 'behind', label: '2 merges not live' });
     expect(liveState(repo(), '2026-11-13T19:00:00Z', Date.parse('2026-11-13T21:05:00Z'))).toMatchObject({ state: 'deploying' });
     // A direct push (no merge commit) still counts
-    expect(liveState(repo({ main: { head: '2026-11-13T21:00:00Z', merges: [] } }), '2026-11-13T19:00:00Z', now)).toMatchObject({ label: 'Main not live' });
+    expect(liveState(repo({ main: { sha: null, head: '2026-11-13T21:00:00Z', merges: [], checks: 'passing' } }), '2026-11-13T19:00:00Z', now)).toMatchObject({ label: 'Main not live' });
 });
 
 it('judges a release-deployed repo by its latest release, not main', () => {

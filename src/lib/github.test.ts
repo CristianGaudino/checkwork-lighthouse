@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { buildQuery, parseRepo, workerName } from './github';
+import { buildQuery, parseRepo, runsChecks, workerName } from './github';
 
 const pr = (over: object = {}) => ({
     number: 12, title: 'Fix the thing', url: 'https://github.com/o/r/pull/12', isDraft: false, updatedAt: '2026-11-10T09:00:00Z',
@@ -34,14 +34,39 @@ it('reads the Worker name from wrangler.jsonc, not a binding name', () => {
     expect(workerName(null)).toBeNull();
 });
 
-it('reads when main last moved and which of its commits are merges', () => {
+it('reads when main last moved, which of its commits are merges, and its checks', () => {
     const c = (committedDate: string, messageHeadline: string) => ({ committedDate, messageHeadline });
-    const repo = parseRepo({ pullRequests: { nodes: [] }, refs: { nodes: [] }, main: { history: { nodes: [
+    const repo = parseRepo({ pullRequests: { nodes: [] }, refs: { nodes: [] }, main: { oid: 'abc', statusCheckRollup: { state: 'FAILURE' }, history: { nodes: [
         c('2026-11-13T21:00:00Z', 'Merge pull request #28 from owner/feat/x'),
         c('2026-11-13T20:00:00Z', "Merge branch 'main' into feat/x"), // the branch catching up: not a merged PR
         c('2026-11-13T19:00:00Z', 'Fix a thing'),
         c('2026-11-12T10:00:00Z', 'Merge pull request #27 from owner/feat/y'),
     ] } } });
-    expect(repo?.main).toEqual({ head: '2026-11-13T21:00:00Z', merges: ['2026-11-13T21:00:00Z', '2026-11-12T10:00:00Z'] });
-    expect(parseRepo({ pullRequests: { nodes: [] }, refs: { nodes: [] } })?.main).toEqual({ head: null, merges: [] });
+    expect(repo?.main).toEqual({ sha: 'abc', head: '2026-11-13T21:00:00Z', merges: ['2026-11-13T21:00:00Z', '2026-11-12T10:00:00Z'], checks: 'failing' });
+    expect(parseRepo({ pullRequests: { nodes: [] }, refs: { nodes: [] } })?.main).toEqual({ sha: null, head: null, merges: [], checks: 'none' });
+});
+
+it('reads from the workflows whether releases deploy, PRs get checks and Actions deploys a Worker', () => {
+    const wf = (name: string, text: string) => ({ name, object: { text } });
+    const read = (entries: ReturnType<typeof wf>[] | null) => {
+        const r = parseRepo({ pullRequests: { nodes: [] }, refs: { nodes: [] }, workflows: entries && { entries } });
+        return [r?.releasesDeploy, r?.checksPrs, r?.deploysWorker];
+    };
+    expect(read([
+        wf('ci.yml', 'name: CI\non:\n  pull_request:\n    types: [opened]'),
+        wf('deploy-workers.yml', 'jobs:\n  deploy:\n    steps:\n      - run: npx wrangler deploy'),
+        wf('release.yml', 'on:\n  workflow_dispatch:'),
+    ])).toEqual([true, true, true]);
+    expect(read([wf('ci.yml', 'on: [push, pull_request]')])).toEqual([false, true, false]);
+    // A push workflow that only reads the PR event is not a check on PRs
+    expect(read([wf('x.yml', 'on:\n  push:\njobs:\n  a:\n    if: github.event.pull_request')])).toEqual([false, false, false]);
+    expect(read(null)).toEqual([false, false, false]);
+});
+
+it("reads main's checks from its Actions runs: any failure fails, then anything still going is running", () => {
+    const run = (status: string, conclusion: string | null) => ({ status, conclusion });
+    expect(runsChecks([run('completed', 'success'), run('completed', 'failure')])).toBe('failing');
+    expect(runsChecks([run('completed', 'success'), run('in_progress', null)])).toBe('running');
+    expect(runsChecks([run('completed', 'success'), run('completed', 'skipped')])).toBe('passing');
+    expect(runsChecks([])).toBe('none');
 });
