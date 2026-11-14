@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { RepoStatus } from './github';
-import { liveState } from './live';
+import { lastDeploy, liveState } from './live';
 
 const now = Date.parse('2026-11-13T22:00:00Z');
 const repo = (over: Partial<NonNullable<RepoStatus>> = {}): RepoStatus => ({
@@ -25,4 +25,10 @@ it('judges a release-deployed repo by its latest release, not main', () => {
 it('knows nothing without the repo or a deploy time', () => {
     expect(liveState(undefined, '2026-11-13T21:00:00Z', now)).toBeNull();
     expect(liveState(repo(), undefined, now)).toBeNull();
+});
+
+it('takes the newest production deploy that succeeded', () => {
+    const d = (createdAt: string, state: string | null) => ({ createdAt, latestStatus: state ? { state } : null });
+    expect(lastDeploy([d('2026-11-13T21:00:00Z', 'FAILURE'), d('2026-11-13T20:00:00Z', null), d('2026-11-12T10:00:00Z', 'SUCCESS')])).toBe('2026-11-12T10:00:00Z');
+    expect(lastDeploy([])).toBeUndefined();
 });

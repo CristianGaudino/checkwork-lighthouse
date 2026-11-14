@@ -26,14 +26,14 @@ export default async function ThisPc() {
                 <Section title="Deploys" aside={<a className={link} {...ext} href={`https://github.com/${OWNER}/checkwork-lighthouse/blob/main/docs/deploy-from-pc.md`}>How it works</a>}>
                     {behind.length ? (
                         <ul className={`${panel} text-sm`}>
-                            {behind.map(({ p, live }) => (
+                            {behind.map(({ p, live, worker }) => (
                                 <li key={p.repo} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
                                     <Link href={`/projects/${p.repo}`} className="flex items-center gap-3 hover:underline hover:underline-offset-4">
                                         <Dot light={live!.state === 'behind' ? 'warn' : 'ok'} />
                                         <span className="font-medium">{p.name}</span>
                                         <span className="text-fg-muted">{liveText(live)}</span>
                                     </Link>
-                                    {live!.state === 'behind' && <DeployLink repo={p.repo} />}
+                                    {live!.state === 'behind' && worker && <DeployLink repo={p.repo} />}
                                 </li>
                             ))}
                         </ul>

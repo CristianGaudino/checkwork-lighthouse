@@ -54,7 +54,7 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
                     <a {...ext} className={link} href={gh}>Repo</a>
                     <a {...ext} className={link} href={`https://github.com/users/${OWNER}/projects/${p.project}`}>Board</a>
                     <a {...ext} className={link} href={`${gh}/actions`}>Actions</a>
-                    {local && live?.state === 'behind' && <DeployLink repo={p.repo} />}
+                    {local && live?.state === 'behind' && worker && <DeployLink repo={p.repo} />}
                 </span>
             }>
                 <span className="flex items-center gap-3"><Dot light={t.problem ? null : siteLight(p, live)} className="size-2.5" />{p.name}</span>

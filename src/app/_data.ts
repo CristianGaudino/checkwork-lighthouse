@@ -4,7 +4,7 @@ import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes';
 import { fetchAnalytics, workerTasks, type Analytics as AnalyticsData } from '@/lib/cloudflare';
 import { fetchNeon, type NeonUsage } from '@/lib/neon';
-import { fetchLive, liveState, type LiveState } from '@/lib/live';
+import { fetchDeployed, fetchLive, liveState, type LiveState } from '@/lib/live';
 import { ago, buildBoard, type Task } from '@/lib/today';
 import { memo, MINUTE } from '@/lib/memo';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
@@ -84,26 +84,42 @@ export async function loadLive(workers: string[]): Promise<{ deployed?: Map<stri
     }
 }
 
+/** When the sites without a Worker (Vercel) were last deployed, from GitHub. Quiet on failure: they show a dash. */
+async function loadDeployed(repos: RepoStatus[]): Promise<Map<string, string>> {
+    const token = process.env.GITHUB_TOKEN;
+    const names = PROJECTS.filter((_, i) => repos[i] && !repos[i]!.worker).map(p => p.repo);
+    if (!token || !names.length) return new Map();
+    try {
+        return await memo('deployed', MINUTE, () => fetchDeployed(token, names));
+    } catch (error) {
+        console.error('Could not load GitHub deployments', error);
+        return new Map();
+    }
+}
+
 /** Everything behind the task queue, shared by the page and the morning brief so both see the same picture. */
 export async function loadToday() {
     const reposLoad = loadRepos();
     // The billing report is fetched alongside; it only needs the repos' visibility to count the private ones
     const publicRepos = reposLoad.then(({ repos }) => new Set(PROJECTS.filter((_, i) => repos[i]?.isPrivate === false).map(p => p.repo)));
-    const liveLoad = reposLoad.then(({ repos }) => loadLive([...new Set(repos.flatMap(r => r?.worker ?? []))]));
-    const [{ repos, problem }, uptime, usage, analytics, deploys] = await Promise.all([reposLoad, loadUptime(), loadMinutes(publicRepos), loadAnalytics(), liveLoad]);
+    const liveLoad = reposLoad.then(({ repos }) => Promise.all([loadLive([...new Set(repos.flatMap(r => r?.worker ?? []))]), loadDeployed(repos)]));
+    const [{ repos, problem }, uptime, usage, analytics, [deploys, deployed]] = await Promise.all([reposLoad, loadUptime(), loadMinutes(publicRepos), loadAnalytics(), liveLoad]);
     const board = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
     const rows = PROJECTS.map((p, i) => ({ ...p, worker: repos[i]?.worker ?? null }));
     const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    // A Worker site asks Cloudflare when it was deployed; any other site (Vercel) goes by GitHub's record of its deploys
     const live: (LiveState | null)[] = PROJECTS.map((_, i) => {
-        const worker = repos[i]?.worker;
-        return worker ? liveState(repos[i], deploys.deployed?.get(worker)) : null;
+        const r = repos[i];
+        return liveState(r, r?.worker ? deploys.deployed?.get(r.worker) : deployed.get(PROJECTS[i].repo));
     });
     const extra: Task[] = [
         ...PROJECTS.flatMap((p, i) => {
             const l = live[i];
-            return l?.state === 'behind'
-                ? [{ project: p.name, level: 2 as const, action: 'Deploy', title: l.label, detail: `Live since ${ago(l.since)}`, href: `https://github.com/${OWNER}/${p.repo}/actions`, deploy: p.repo }]
-                : [];
+            if (l?.state !== 'behind') return [];
+            // Only a Worker can be deployed from this PC (docs/deploy-from-pc.md); a Vercel site's deploy failed or was skipped
+            return [rows[i].worker
+                ? { project: p.name, level: 2 as const, action: 'Deploy', title: l.label, detail: `Live since ${ago(l.since)}`, href: `https://github.com/${OWNER}/${p.repo}/actions`, deploy: p.repo }
+                : { project: p.name, level: 2 as const, action: 'Check the deploy', title: l.label, detail: `Live since ${ago(l.since)}`, href: `https://github.com/${OWNER}/${p.repo}/deployments` }];
         }),
         ...(usage.minutes ? [minutesTask(usage.minutes)].filter(t => t !== null) : []),
         ...(analytics.data && account ? workerTasks(rows, analytics.data, account) : []),
