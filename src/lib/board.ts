@@ -32,7 +32,6 @@ const ITEMS = `items(first: 100, query: "-status:Done is:open") { nodes {
     content { ... on Issue { url issueType { name } } ... on PullRequest { url } }
 } }`;
 
-
 /** Open issue URLs by "repo title", from the token that can read issues. Empty when it can't (no Issues read yet). */
 export async function fetchIssueLinks(projects: Project[], token: string): Promise<Map<string, string>> {
     const query = `{ ${projects.map((p, i) => `r${i}: repository(owner: ${JSON.stringify(OWNER)}, name: ${JSON.stringify(p.repo)}) { issues(states: OPEN, first: 100) { nodes { title url } } }`).join('\n')} }`;
@@ -45,7 +44,6 @@ export async function fetchIssueLinks(projects: Project[], token: string): Promi
     return links;
 }
 
-/** The raw items per project, in config order (null for a project the token can't read). */
 /** Each project's open items and its automations (the built-in workflows), in config order; null where the token can't read it. */
 export async function fetchBoardItems(projects: Project[], token: string): Promise<ProjectData[]> {
     const query = `{ ${projects.map((p, i) => `p${i}: user(login: ${JSON.stringify(OWNER)}) { projectV2(number: ${p.project}) { ${ITEMS} workflows(first: 20) { nodes { name enabled } } } }`).join('\n')} }`;

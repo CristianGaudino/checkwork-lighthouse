@@ -9,7 +9,7 @@ const Pr = z.object({
     updatedAt: z.string(),
     author: z.object({ login: z.string() }).nullable(), // null when the account was deleted
     reviewDecision: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullable(),
-    commits: z.object({ nodes: z.array(z.object({ commit: z.object({ statusCheckRollup: z.object({ state: z.string() }).nullable() }) })) }),
+    commits: z.object({ nodes: z.array(z.object({ commit: z.object({ oid: z.string().optional(), statusCheckRollup: z.object({ state: z.string() }).nullable() }) })) }),
 });
 const Tag = z.object({
     name: z.string(),
@@ -49,8 +49,9 @@ export function readVersions(text: string | null | undefined): Record<string, st
     return out;
 }
 
+/** `sha`: the head commit, so a merge only goes through if nothing was pushed since the page showed it. */
 export type PullRequest = {
-    number: number; title: string; url: string; draft: boolean; updatedAt: string; author: string;
+    number: number; title: string; url: string; draft: boolean; updatedAt: string; author: string; sha: string | null;
     review: 'approved' | 'changes' | 'waiting' | 'none';
     checks: 'passing' | 'failing' | 'running' | 'none';
 };
@@ -58,7 +59,7 @@ export type PullRequest = {
  * `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site.
  * `checksPrs`: a workflow runs on pull requests. `deploysWorker`: a workflow runs `wrangler deploy`.
  * `main`: when main's newest commit and its recent merges landed, newest first, to tell what the live Worker is missing,
- * and how the newest commit's checks went ('none' too when the token can't see them: see fetchMainRuns).
+ * and how the newest commit's checks went ('none' too when the token can't see them: see fetchRuns).
  */
 export type RepoStatus = {
     prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; checksPrs: boolean; deploysWorker: boolean; isPrivate: boolean;
@@ -73,7 +74,7 @@ const REVIEW = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQU
 const FIELDS = `
   isPrivate
   pullRequests(states: OPEN, first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) {
-    nodes { number title url isDraft updatedAt author { login } reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+    nodes { number title url isDraft updatedAt author { login } reviewDecision commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } } }
   }
   refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
     nodes { name compare(headRef: "main") { aheadBy } target { ... on Commit { committedDate } ... on Tag { target { ... on Commit { committedDate } } } } }
@@ -103,6 +104,7 @@ export function parseRepo(raw: unknown): RepoStatus {
             draft: pr.isDraft,
             updatedAt: pr.updatedAt,
             author: pr.author?.login ?? 'ghost',
+            sha: pr.commits.nodes[0]?.commit.oid ?? null,
             review: pr.reviewDecision ? REVIEW[pr.reviewDecision] : 'none',
             checks: CHECKS[pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? ''] ?? 'none',
         })),
@@ -154,17 +156,14 @@ export function runsChecks(runs: z.infer<typeof Runs>['workflow_runs']): PullReq
 }
 
 /**
- * Checks on main's newest commit, from its Actions runs, for the repos where GraphQL gave none. A fine-grained token
- * can't read check results on a private repo, but it can read Actions. One request per repo; a repo that fails is left out.
+ * How one commit's checks went, from its Actions runs, for where GraphQL gave none: a fine-grained token can't read
+ * check results on a private repo, but it can read Actions. Throws when GitHub refuses.
  */
-export async function fetchMainRuns(token: string, repos: { repo: string; sha: string }[]): Promise<Map<string, PullRequest['checks']>> {
-    const found = await Promise.all(repos.map(async ({ repo, sha }) => {
-        const res = await fetch(`https://api.github.com/repos/${OWNER}/${repo}/actions/runs?head_sha=${sha}&per_page=20`, {
-            headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
-            signal: AbortSignal.timeout(10_000),
-        });
-        if (!res.ok) { console.error(`Could not read Actions runs for ${repo}: ${res.status}`); return null; }
-        return [repo, runsChecks(Runs.parse(await res.json()).workflow_runs)] as const;
-    }));
-    return new Map(found.filter(f => f !== null));
+export async function fetchRuns(token: string, repo: string, sha: string): Promise<PullRequest['checks']> {
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${repo}/actions/runs?head_sha=${sha}&per_page=20`, {
+        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
+        signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`GitHub Actions runs for ${repo}: ${res.status}`);
+    return runsChecks(Runs.parse(await res.json()).workflow_runs);
 }

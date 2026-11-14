@@ -1,5 +1,5 @@
 import 'server-only';
-import { fetchMainRuns, fetchRepos, type PullRequest, type RepoStatus } from '@/lib/github';
+import { fetchRepos, fetchRuns, type PullRequest, type RepoStatus } from '@/lib/github';
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes';
 import { fetchAnalytics, workerTasks, type Analytics as AnalyticsData } from '@/lib/cloudflare';
@@ -97,17 +97,22 @@ async function loadDeployed(repos: RepoStatus[]): Promise<Map<string, string>> {
     }
 }
 
-/** Main's checks, from Actions, for the repos whose check results GraphQL keeps from the token (private ones). */
-async function loadMainRuns(repos: RepoStatus[]): Promise<Map<string, PullRequest['checks']>> {
+/**
+ * Checks from Actions for main and the open PRs where GraphQL gave none (private repos), by commit. Each commit is asked
+ * once a minute at most; one GitHub refuses stays 'none', and its PR then gets no Merge button (see prTask).
+ */
+async function loadRuns(repos: RepoStatus[]): Promise<Map<string, PullRequest['checks']>> {
     const token = process.env.GITHUB_TOKEN;
-    const ask = PROJECTS.flatMap((p, i) => (repos[i]?.main.checks === 'none' && repos[i]!.main.sha ? [{ repo: p.repo, sha: repos[i]!.main.sha! }] : []));
-    if (!token || !ask.length) return new Map();
-    try {
-        return await memo('main-runs', MINUTE, () => fetchMainRuns(token, ask));
-    } catch (error) {
-        console.error('Could not load Actions runs', error);
-        return new Map();
-    }
+    if (!token) return new Map();
+    const ask = PROJECTS.flatMap((p, i) => {
+        const r = repos[i];
+        return r ? [r.main, ...r.prs.filter(pr => !pr.draft)].flatMap(c => (c.checks === 'none' && c.sha ? [{ repo: p.repo, sha: c.sha }] : [])) : [];
+    });
+    const found = await Promise.all(ask.map(({ repo, sha }) => memo(`runs ${sha}`, MINUTE, () => fetchRuns(token, repo, sha)).then(
+        checks => [sha, checks] as const,
+        error => { console.error('Could not load Actions runs', error); return null; },
+    )));
+    return new Map(found.filter(f => f !== null));
 }
 
 /** Everything behind the task queue, shared by the page and the morning brief so both see the same picture. */
@@ -115,10 +120,11 @@ export async function loadToday() {
     const reposLoad = loadRepos();
     // The billing report is fetched alongside; it only needs the repos' visibility to count the private ones
     const publicRepos = reposLoad.then(({ repos }) => new Set(PROJECTS.filter((_, i) => repos[i]?.isPrivate === false).map(p => p.repo)));
-    const liveLoad = reposLoad.then(({ repos }) => Promise.all([loadLive([...new Set(repos.flatMap(r => r?.worker ?? []))]), loadDeployed(repos), loadMainRuns(repos)]));
+    const liveLoad = reposLoad.then(({ repos }) => Promise.all([loadLive([...new Set(repos.flatMap(r => r?.worker ?? []))]), loadDeployed(repos), loadRuns(repos)]));
     const [{ repos: answered, problem }, uptime, usage, analytics, [deploys, deployed, runs]] = await Promise.all([reposLoad, loadUptime(), loadMinutes(publicRepos), loadAnalytics(), liveLoad]);
-    // Main's checks from Actions where GraphQL couldn't say
-    const repos = answered.map((r, i) => (r && runs.has(PROJECTS[i].repo) ? { ...r, main: { ...r.main, checks: runs.get(PROJECTS[i].repo)! } } : r));
+    // Checks from Actions where GraphQL couldn't say
+    const withRuns = <C extends { sha: string | null; checks: PullRequest['checks'] }>(c: C): C => (c.sha && runs.has(c.sha) ? { ...c, checks: runs.get(c.sha)! } : c);
+    const repos = answered.map(r => r && { ...r, main: withRuns(r.main), prs: r.prs.map(withRuns) });
     const board = buildBoard(PROJECTS, problem ? undefined : repos, uptime.uptimes);
     const rows = PROJECTS.map((p, i) => ({ ...p, worker: repos[i]?.worker ?? null }));
     const account = process.env.CLOUDFLARE_ACCOUNT_ID;

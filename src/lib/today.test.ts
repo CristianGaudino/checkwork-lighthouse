@@ -4,7 +4,7 @@ import { ago, buildBoard, lightOf, mainTask, span } from './today';
 
 const NOW = Date.parse('2026-11-13T12:00:00Z');
 const p = (name: string) => ({ name, repo: name, site: `${name}.ie`, project: 1 });
-const pr = (over: Partial<PullRequest> = {}): PullRequest => ({ number: 1, title: 't', url: 'u', draft: false, updatedAt: '2026-11-13T11:00:00Z', author: 'a', review: 'none', checks: 'passing', ...over });
+const pr = (over: Partial<PullRequest> = {}): PullRequest => ({ number: 1, title: 't', url: 'u', draft: false, updatedAt: '2026-11-13T11:00:00Z', author: 'a', sha: 'head', review: 'none', checks: 'passing', ...over });
 const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, checksPrs: true, deploysWorker: true, isPrivate: true, worker: null, versions: {}, main: { sha: null, head: null, merges: [], checks: 'none' } });
 
 it('queues the worst first, keeps config order on ties, and lights each project', () => {
@@ -79,10 +79,21 @@ it('folds Dependabot PRs into one task per repo, and names who opened a PR unles
 it('marks PR tasks with what the page needs to merge or approve them', () => {
     const { tasks } = buildBoard([p('r')], [repo([pr({ number: 7, author: 'CristianGaudino' }), pr({ number: 8, author: 'other', checks: 'failing' }), pr({ number: 9, review: 'changes' })])], undefined, NOW);
     expect(tasks.map(t => t.pr)).toEqual([
-        { repo: 'r', number: 8, mine: false, canMerge: false },
-        { repo: 'r', number: 7, mine: true, canMerge: true },
-        { repo: 'r', number: 9, mine: false, canMerge: false }, // changes asked for: no merge
+        { repo: 'r', number: 8, sha: 'head', mine: false, canMerge: false },
+        { repo: 'r', number: 7, sha: 'head', mine: true, canMerge: true },
+        { repo: 'r', number: 9, sha: 'head', mine: false, canMerge: false }, // changes asked for: no merge
     ]);
+});
+
+it('offers Merge only once checks pass, or where the repo runs none on PRs', () => {
+    const merge = (r: RepoStatus, checks: PullRequest['checks']) => buildBoard([p('r')], [{ ...r!, prs: [pr({ checks })] }], undefined, NOW).tasks[0].pr?.canMerge;
+    const noChecks = { ...repo([])!, checksPrs: false };
+    expect(merge(repo([]), 'running')).toBe(false);
+    // Has checks on PRs but none read: unknown, so no Merge
+    expect(merge(repo([]), 'none')).toBe(false);
+    expect(merge(noChecks, 'none')).toBe(true);
+    // No head commit read: nothing to pin the merge to
+    expect(buildBoard([p('r')], [repo([pr({ sha: null })])], undefined, NOW).tasks[0].pr).toBeUndefined();
 });
 
 it('asks to fix a failing main, in amber when the site already runs it', () => {

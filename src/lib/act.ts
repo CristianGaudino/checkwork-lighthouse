@@ -16,6 +16,8 @@ export function checkNumber(value: unknown): number | null {
     const n = Number(value);
     return Number.isInteger(n) && n > 0 ? n : null;
 }
+/** A full commit id, as GitHub gives it. */
+export const checkSha = (value: unknown): string | null => (typeof value === 'string' && /^[0-9a-f]{40}$/.test(value) ? value : null);
 export function checkIssue(form: { title: unknown; body: unknown; type: unknown }) {
     const title = typeof form.title === 'string' ? form.title.trim() : '';
     const body = typeof form.body === 'string' ? form.body.trim() : '';
@@ -44,9 +46,9 @@ export async function approve(token: string, repo: string, number: number): Prom
     return r.status === 200 ? { ok: `Approved #${number}` } : refused(r.status, r.json.message);
 }
 
-export async function merge(token: string, repo: string, number: number): Promise<ActResult> {
-    // A merge commit, as every PR in these repos has been merged so far
-    const r = await github(token, 'PUT', `${repo}/pulls/${number}/merge`, { merge_method: 'merge' });
+export async function merge(token: string, repo: string, number: number, sha: string): Promise<ActResult> {
+    // A merge commit, as every PR in these repos has been merged so far. `sha`: GitHub refuses (409) if the head moved since
+    const r = await github(token, 'PUT', `${repo}/pulls/${number}/merge`, { merge_method: 'merge', sha });
     return r.status === 200 ? { ok: `Merged #${number}` } : refused(r.status, r.json.message);
 }
 

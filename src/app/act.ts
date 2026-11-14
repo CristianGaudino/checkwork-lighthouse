@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/access';
-import { approve, checkIssue, checkNumber, checkRepo, createIssue, merge, type ActResult } from '@/lib/act';
+import { approve, checkIssue, checkNumber, checkRepo, checkSha, createIssue, merge, type ActResult } from '@/lib/act';
 import { forgetAll } from '@/lib/memo';
 
 /**
@@ -31,9 +31,10 @@ export async function approvePr(_prev: ActResult, form: FormData): Promise<ActRe
 
 export async function mergePr(_prev: ActResult, form: FormData): Promise<ActResult> {
     const { token, repo, number } = await prFields(form);
+    const sha = checkSha(form.get('sha'));
     if (!token) return NO_TOKEN;
-    if (!repo || !number) return { error: 'Unknown pull request.' };
-    return done(await merge(token, repo, number));
+    if (!repo || !number || !sha) return { error: 'Unknown pull request.' };
+    return done(await merge(token, repo, number, sha));
 }
 
 export async function newIssue(_prev: ActResult, form: FormData): Promise<ActResult> {

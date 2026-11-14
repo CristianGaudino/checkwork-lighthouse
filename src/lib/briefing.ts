@@ -10,7 +10,6 @@ export type Merged = { repo: string; title: string; author: string; mergedAt: st
 export type Commit = { message: string; date: string; author: string };
 export type Run = { name: string; conclusion: string | null; status: string; createdAt: string; sha: string };
 
-
 const MergedData = z.object({ search: z.object({ nodes: z.array(z.object({
     title: z.string(), mergedAt: z.string(), author: z.object({ login: z.string() }).nullable(), repository: z.object({ name: z.string() }),
 }).partial()) }) });

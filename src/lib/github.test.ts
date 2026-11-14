@@ -4,15 +4,15 @@ import { buildQuery, parseRepo, runsChecks, workerName } from './github';
 const pr = (over: object = {}) => ({
     number: 12, title: 'Fix the thing', url: 'https://github.com/o/r/pull/12', isDraft: false, updatedAt: '2026-11-10T09:00:00Z',
     author: { login: 'dev' }, reviewDecision: 'REVIEW_REQUIRED',
-    commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE' } } }] }, ...over,
+    commits: { nodes: [{ commit: { oid: 'head1', statusCheckRollup: { state: 'FAILURE' } } }] }, ...over,
 });
 
-it('maps PR review and check states, and a deleted author', () => {
+it('maps PR review and check states, the head commit, and a deleted author', () => {
     const repo = parseRepo({
         pullRequests: { nodes: [pr(), pr({ author: null, reviewDecision: null, commits: { nodes: [{ commit: { statusCheckRollup: null } }] } })] },
         refs: { nodes: [] },
     });
-    expect(repo?.prs.map(p => [p.author, p.review, p.checks])).toEqual([['dev', 'waiting', 'failing'], ['ghost', 'none', 'none']]);
+    expect(repo?.prs.map(p => [p.author, p.review, p.checks, p.sha])).toEqual([['dev', 'waiting', 'failing', 'head1'], ['ghost', 'none', 'none', null]]);
     expect(repo?.release).toBeNull();
 });
 
