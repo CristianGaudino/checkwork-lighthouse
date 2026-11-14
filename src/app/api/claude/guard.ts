@@ -7,6 +7,9 @@ import { adminEmail } from '@/lib/access';
  * another site can't send without asking first (and nothing here says yes). Returns the status to refuse with, or null.
  */
 export function fromElsewhere(method: string, header: (name: string) => string | null, origin: string): 403 | 415 | null {
+    // Only this PC by its own name: `next dev` listens on the network too, and a site that points its name at this PC
+    // (DNS rebinding) would otherwise count as same-origin
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(header('host') ?? '')) return 403;
     const site = header('sec-fetch-site');
     if (site && site !== 'same-origin') return 403;
     if (method === 'GET') return null;

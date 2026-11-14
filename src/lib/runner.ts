@@ -36,7 +36,7 @@ const runs: Map<string, Run> = ((globalThis as { __lighthouseRuns?: Map<string, 
 class Inbox implements AsyncIterable<{ type: 'user'; message: { role: 'user'; content: string }; parent_tool_use_id: null }> {
     private items: string[] = [];
     private wake?: () => void;
-    private closed = false;
+    closed = false;
     push(text: string) { this.items.push(text); this.wake?.(); }
     close() { this.closed = true; this.wake?.(); }
     async *[Symbol.asyncIterator]() {
@@ -84,7 +84,8 @@ export function runView(id: string): RunView | null {
 
 function touch(run: Run) {
     clearTimeout(run.timer);
-    run.timer = setTimeout(() => { if (!run.pending.size) run.inbox.close(); }, IDLE_MS);
+    // Never mid-task: each result calls this again, so a long task gets its full idle time after it finishes
+    run.timer = setTimeout(() => { if (!run.pending.size && run.state === 'idle') run.inbox.close(); }, IDLE_MS);
 }
 
 /** Questions as AskUserQuestion sends them, with anything unexpected dropped. */
@@ -98,15 +99,20 @@ function questionsOf(input: Record<string, unknown>): Ask['questions'] {
 
 /** Starts a run: resuming `resume`, or a new session when it is null (its id comes with Claude's first message). */
 async function start(resume: string | null, cwd: string, mode: string | null): Promise<Run> {
-    // Loaded by its file on this PC, worked out when it runs: a package name the bundler could see would put the whole
-    // SDK into the Worker, which never runs a session (this only runs under `npm run dev`)
-    const [{ join }, { pathToFileURL }] = await Promise.all([import('node:path'), import('node:url')]);
-    const sdk = pathToFileURL(join(process.cwd(), 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'sdk.mjs')).href;
-    const { query } = (await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ sdk)) as typeof import('@anthropic-ai/claude-agent-sdk');
     let named!: (id: string) => void, failed!: (e: Error) => void;
     const known = new Promise<string>((res, rej) => { named = res; failed = rej; });
     known.catch(() => undefined); // a resume never waits on it
     const run: Run = { id: resume ?? '', inbox: new Inbox(), state: 'working', pending: new Map(), known };
+    // Registered before any await, so a second message sent meanwhile joins this run instead of starting another
+    if (resume) { runs.set(resume, run); named(resume); }
+    // Loaded by its file on this PC, worked out when it runs: a package name the bundler could see would put the whole
+    // SDK into the Worker, which never runs a session (this only runs under `npm run dev`)
+    const [{ join }, { pathToFileURL }] = await Promise.all([import('node:path'), import('node:url')]);
+    const sdk = pathToFileURL(join(process.cwd(), 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'sdk.mjs')).href;
+    const { query } = (await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ sdk).catch((error: Error) => {
+        run.state = 'ended'; run.error = error.message; failed(error);
+        throw error;
+    })) as typeof import('@anthropic-ai/claude-agent-sdk');
     const canUseTool: CanUseTool = (tool, input, { signal, suggestions, toolUseID }) => new Promise(resolve => {
         const key = toolUseID;
         const pending: Pending = {
@@ -124,7 +130,6 @@ async function start(resume: string | null, cwd: string, mode: string | null): P
         prompt: run.inbox,
         options: { resume: resume ?? undefined, cwd, env: sessionEnv(process.env, existsSync, process.platform === 'win32'), permissionMode: mode && MODES.has(mode as PermissionMode) ? (mode as PermissionMode) : 'default', canUseTool },
     });
-    if (resume) { runs.set(resume, run); named(resume); }
     (async () => {
         try {
             for await (const m of run.query!) {
@@ -148,7 +153,8 @@ async function start(resume: string | null, cwd: string, mode: string | null): P
 /** Sends a message into a session, starting a run for it when none is going. */
 export async function send(id: string, text: string, cwd: string, mode: string | null) {
     let run = runs.get(id);
-    if (!run || run.state === 'ended') run = await start(id, cwd, mode);
+    // A closed inbox is a run on its way out: a message pushed into it would never be read
+    if (!run || run.state === 'ended' || run.inbox.closed) run = await start(id, cwd, mode);
     run.state = 'working';
     run.inbox.push(text);
     touch(run);

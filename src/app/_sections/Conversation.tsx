@@ -82,16 +82,19 @@ export function Conversation({ id }: { id: string }) {
         return () => clearTimeout(timer);
     }, [id, range, busy, load]);
 
+    // The piece already asked for, by where it ends: scroll events come faster than renders, so state can't tell
+    const asked = useRef<number | null>(null);
     const loadOlder = useCallback(async () => {
-        if (!range || range.start === 0 || older) return;
+        if (!range || range.start === 0 || asked.current === range.start) return;
+        asked.current = range.start;
         setOlder(true);
         try {
             const s = (await api(id, { query: `before=${range.start}` })) as Slice;
             keep.current = scroller.current?.scrollHeight ?? null;
             setEntries(es => [...s.entries, ...es]);
             setRange(r => (r ? { start: s.start, end: r.end } : r));
-        } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setOlder(false); }
-    }, [id, range, older]);
+        } catch (e) { asked.current = null; setError(e instanceof Error ? e.message : String(e)); } finally { setOlder(false); }
+    }, [id, range]);
 
     // Keep the view still when older messages go in above, and at the bottom when new ones arrive
     useLayoutEffect(() => {

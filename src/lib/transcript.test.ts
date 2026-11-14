@@ -53,10 +53,13 @@ it('reads a big transcript backwards in pieces, then only what was added', async
 it('refuses requests from any page but this site’s own', async () => {
     const { fromElsewhere } = await import('../app/api/claude/guard');
     const me = 'http://localhost:3000';
-    const h = (o: Record<string, string>) => (n: string) => o[n] ?? null;
+    const h = (o: Record<string, string>) => (n: string) => ({ host: 'localhost:3000', ...o })[n] ?? null;
     const json = { origin: me, 'content-type': 'application/json', 'sec-fetch-site': 'same-origin' };
     expect(fromElsewhere('POST', h(json), me)).toBeNull();
     expect(fromElsewhere('GET', h({ 'sec-fetch-site': 'same-origin' }), me)).toBeNull();
+    // Another device on the network, or a site whose name now points here: same-origin as far as the browser knows
+    expect(fromElsewhere('POST', h({ ...json, host: '192.168.1.20:3000', origin: 'http://192.168.1.20:3000' }), 'http://192.168.1.20:3000')).toBe(403);
+    expect(fromElsewhere('GET', h({ host: 'evil.example:3000' }), 'http://evil.example:3000')).toBe(403);
     // Another site's page: by what the browser says, by its origin, or as a plain form
     expect(fromElsewhere('GET', h({ 'sec-fetch-site': 'cross-site' }), me)).toBe(403);
     expect(fromElsewhere('POST', h({ ...json, 'sec-fetch-site': 'same-site' }), me)).toBe(403);
