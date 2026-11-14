@@ -7,6 +7,7 @@ import { iconHrefs, iconsByRepo, initials, subLetter } from './icons';
 import { matchServers } from './local';
 import { jumps, matches } from './palette';
 import { beats } from './pulse';
+import { FORGET_MS, freshKeys } from './seen';
 import type { Task } from './today';
 
 const p = (repo: string, name = repo) => ({ name, repo, site: `www.${repo}.ie`, project: 1 });
@@ -120,4 +121,17 @@ describe('writes to GitHub', () => {
         stub(() => answer(405));
         expect(await mergeAll('t', 'vintage', [{ number: 3, sha: 'a' }])).toEqual({ error: 'GitHub merged none of #3. Open them to see why.' });
     });
+});
+
+it('notifies a key once, and not again when it drops out for a refresh or two', () => {
+    const t0 = Date.parse('2026-11-13T12:00:00Z'), min = 60_000;
+    const a = freshKeys(['main', 'pr'], null, t0);
+    expect(a).toMatchObject({ fresh: ['main', 'pr'], first: true });
+    // GitHub failed: the PR is gone for a minute, then back; only the new site-down is fresh
+    const b = freshKeys(['main'], a.store, t0 + min);
+    const c = freshKeys(['main', 'pr', 'down'], b.store, t0 + 2 * min);
+    expect(c).toMatchObject({ fresh: ['down'], first: false });
+    // Gone for longer than FORGET_MS: it is news again
+    expect(freshKeys(['pr'], freshKeys([], c.store, t0 + 3 * min).store, t0 + 3 * min + FORGET_MS).fresh).toEqual(['pr']);
+    expect(freshKeys(['x'], '["old","list"]', t0)).toMatchObject({ first: true });
 });

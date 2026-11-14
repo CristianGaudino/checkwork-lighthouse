@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { askHref, parseTail, resumeHref, tokensSince } from './claude';
+import { askHref, parseTail, resumeHref, scanTranscript } from './claude';
 
 const NOW = Date.parse('2026-11-13T12:00:00Z');
 const j = (o: object) => JSON.stringify(o);
@@ -28,10 +28,11 @@ it('shows a pending question and its options, a plan to approve, and ignores a s
     expect(parseTail([ask, sub].join('\n'), 's', NOW)).toMatchObject({ state: 'question' });
 });
 
-it('counts the tokens Claude wrote since a time, each reply once', () => {
-    const reply = (id: string, at: string, out: number) => j({ type: 'assistant', requestId: id, timestamp: at, message: { usage: { output_tokens: out } } });
-    const text = [reply('r1', '2026-11-12T23:00:00Z', 500), reply('r2', '2026-11-13T09:00:00Z', 100), reply('r2', '2026-11-13T09:00:00Z', 100), reply('r3', '2026-11-13T10:00:00Z', 40), '{"broken'].join('\n');
-    expect(tokensSince(text, Date.parse('2026-11-13T00:00:00Z'))).toBe(140);
+it('counts the tokens Claude wrote since a time, each reply once, and where it last worked', async () => {
+    const reply = (id: string, at: string, out: number) => j({ type: 'assistant', requestId: id, timestamp: at, cwd: 'c:\\Git\\how-much', message: { usage: { output_tokens: out } } });
+    const lines = [line('user', 'go'), reply('r1', '2026-11-12T23:00:00Z', 500), reply('r2', '2026-11-13T09:00:00Z', 100), reply('r2', '2026-11-13T09:00:00Z', 100), reply('r3', '2026-11-13T10:00:00Z', 40), '{"broken'];
+    async function* stream() { yield* lines; }
+    expect(await scanTranscript(stream(), Date.parse('2026-11-13T00:00:00Z'))).toEqual({ tokens: 140, cwd: 'c:\\Git\\how-much' });
 });
 
 it('builds the Claude Code extension links', () => {

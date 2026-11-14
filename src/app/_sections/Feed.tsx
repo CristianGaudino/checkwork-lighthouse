@@ -55,7 +55,8 @@ export function Feed({ events, compact }: { events: Event[]; compact?: boolean }
     if (!events.length) return <p className="mt-3 text-sm text-fg-muted">Nothing in the last week</p>;
     return (
         <>
-            {from !== null && <p className="mt-1 text-sm text-fg-muted">{fresh ? `${fresh} new since you last looked` : from ? 'Nothing new since you last looked' : ''}</p>}
+            {/* The short list shows a few rows only, so its count would be wrong: Activity has the real one */}
+            {from !== null && !compact && <p className="mt-1 text-sm text-fg-muted">{fresh ? `${fresh} new since you last looked` : from ? 'Nothing new since you last looked' : ''}</p>}
             <ul className={`${panel} text-sm`}>
                 {events.map((e, i) => {
                     const label = dayLabel(e.at, now);

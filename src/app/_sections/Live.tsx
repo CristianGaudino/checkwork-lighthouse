@@ -3,6 +3,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import type { Beat, BeatKind } from '@/lib/pulse';
+import { freshKeys } from '@/lib/seen';
 
 export const KINDS: { kind: Exclude<BeatKind, 'other'>; label: string }[] = [
     { kind: 'down', label: 'A site goes down' },
@@ -19,7 +20,7 @@ export const KINDS: { kind: Exclude<BeatKind, 'other'>; label: string }[] = [
  */
 
 const EVERY = 60_000;
-const SEEN = 'lighthouse.seen';
+const SEEN = 'lighthouse.seenAt';
 const PREFS = 'lighthouse.notify';
 
 type Prefs = { on: boolean; kinds: Partial<Record<BeatKind, boolean>> };
@@ -75,16 +76,14 @@ export function Live({ beats }: { beats: Beat[] }) {
     }, [count, path]);
 
     useEffect(() => {
-        const before = read(SEEN);
-        write(SEEN, JSON.stringify(beats.map(b => b.key)));
+        const { fresh, store, first } = freshKeys(beats.map(b => b.key), read(SEEN));
+        write(SEEN, store);
         // The first visit only learns what is already there
-        if (before === null || !canNotify() || Notification.permission !== 'granted') return;
+        if (first || !canNotify() || Notification.permission !== 'granted') return;
         const p = prefs();
         if (!p.on) return;
-        let seen: Set<string>;
-        try { seen = new Set(JSON.parse(before)); } catch { return; }
         for (const b of beats) {
-            if (seen.has(b.key) || !p.kinds[b.kind]) continue;
+            if (!fresh.includes(b.key) || !p.kinds[b.kind]) continue;
             // tag: two open tabs show one notification, not two
             const n = new Notification(b.title, { body: b.body, tag: b.key, icon: '/icon-192.png' });
             n.onclick = () => { window.focus(); if (b.href.startsWith('/')) router.push(b.href); else window.open(b.href, b.href.startsWith('http') ? '_blank' : '_self'); };

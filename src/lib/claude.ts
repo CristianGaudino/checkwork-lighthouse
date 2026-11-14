@@ -49,7 +49,7 @@ export function parseTail(text: string, id: string, now = Date.now()): Session |
         : last.type === 'assistant' ? 'blocked' : 'stopped';
     return {
         id,
-        repo: cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? '?',
+        repo: folderName(cwd),
         title: clip(title, 120),
         state,
         at: last.timestamp!,
@@ -58,21 +58,29 @@ export function parseTail(text: string, id: string, now = Date.now()): Session |
     };
 }
 
-/** Tokens Claude wrote since `since`, in one transcript. A reply's blocks share one request and repeat its usage, so each counts once. */
-export function tokensSince(text: string, since: number): number {
+/**
+ * Tokens Claude wrote since `since` in one transcript, and the folder it last worked in. Takes lines one at a time, so a
+ * transcript of hundreds of MB is never held whole; only lines carrying usage are parsed. A reply's blocks share one
+ * request and repeat its usage, so each counts once.
+ */
+export async function scanTranscript(lines: Iterable<string> | AsyncIterable<string>, since: number): Promise<{ tokens: number; cwd: string }> {
     const seen = new Set<string>();
-    let total = 0;
-    for (const l of text.split('\n')) {
+    let tokens = 0, cwd = '';
+    for await (const l of lines) {
+        const dir = l.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1];
+        if (dir) cwd = dir.replace(/\\\\/g, '\\');
         if (!l.includes('"output_tokens"')) continue;
         let line: Line;
         try { line = JSON.parse(l); } catch { continue; }
         const key = line.requestId ?? line.message?.id;
         if (line.type !== 'assistant' || !line.timestamp || Date.parse(line.timestamp) < since || !key || seen.has(key)) continue;
         seen.add(key);
-        total += line.message?.usage?.output_tokens ?? 0;
+        tokens += line.message?.usage?.output_tokens ?? 0;
     }
-    return total;
+    return { tokens, cwd };
 }
+
+const folderName = (cwd: string) => cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? '?';
 
 // In their own file so the browser's code can build them without this file's node: imports
 export { askHref, resumeHref } from './vscode';
@@ -87,16 +95,20 @@ export async function readSessions(now = Date.now()): Promise<Session[] | null> 
         const names = await readdir(path.join(root, d)).catch(() => [] as string[]);
         return Promise.all(names.filter(n => n.endsWith('.jsonl')).map(async n => {
             const file = path.join(root, d, n);
-            const s = await stat(file);
-            return now - s.mtimeMs < RECENT_MS ? { file, size: s.size, id: n.slice(0, -6) } : null;
+            // Claude Code removes old transcripts, so one listed a moment ago may be gone: skip it, never fail the page
+            const s = await stat(file).catch(() => null);
+            return s && now - s.mtimeMs < RECENT_MS ? { file, size: s.size, id: n.slice(0, -6) } : null;
         }));
     }))).flat().filter(f => f !== null);
     const sessions = await Promise.all(files.map(async f => {
-        const handle = await open(f.file, 'r');
+        const handle = await open(f.file, 'r').catch(() => null);
+        if (!handle) return null;
         try {
             const length = Math.min(f.size, TAIL_BYTES);
             const { buffer } = await handle.read(Buffer.alloc(length), 0, length, f.size - length);
             return parseTail(buffer.toString('utf8'), f.id, now);
+        } catch {
+            return null;
         } finally {
             await handle.close();
         }
@@ -118,18 +130,20 @@ export const needsYou = (s: Session, now = Date.now()) =>
 /** Tokens Claude wrote today (since local midnight) per repo, from every transcript touched today. null outside `next dev`. */
 export async function readUsageToday(now = new Date()): Promise<{ repo: string; tokens: number; sessions: number }[] | null> {
     if (process.env.NODE_ENV !== 'development') return null;
-    const [{ readdir, readFile, stat }, path, os] = await Promise.all([import('node:fs/promises'), import('node:path'), import('node:os')]);
+    const [{ readdir, stat, open }, path, os] = await Promise.all([import('node:fs/promises'), import('node:path'), import('node:os')]);
     const since = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const root = path.join(os.homedir(), '.claude', 'projects');
     const by = new Map<string, { tokens: number; sessions: number }>();
     for (const d of await readdir(root).catch(() => [] as string[])) {
         for (const n of (await readdir(path.join(root, d)).catch(() => [] as string[])).filter(n => n.endsWith('.jsonl'))) {
             const file = path.join(root, d, n);
-            if ((await stat(file)).mtimeMs < since) continue;
-            const text = await readFile(file, 'utf8');
-            const tokens = tokensSince(text, since);
+            if (((await stat(file).catch(() => null))?.mtimeMs ?? 0) < since) continue;
+            // Line by line: today's transcripts can run to hundreds of MB, too big to hold as one string
+            const handle = await open(file, 'r').catch(() => null);
+            if (!handle) continue;
+            const { tokens, cwd } = await scanTranscript(handle.readLines(), since).catch(() => ({ tokens: 0, cwd: '' })).finally(() => handle.close());
             if (!tokens) continue;
-            const repo = parseTail(text.slice(-TAIL_BYTES), n, now.getTime())?.repo ?? '?';
+            const repo = folderName(cwd);
             const row = by.get(repo) ?? { tokens: 0, sessions: 0 };
             by.set(repo, { tokens: row.tokens + tokens, sessions: row.sessions + 1 });
         }
