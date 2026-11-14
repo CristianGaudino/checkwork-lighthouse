@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/access';
 import { askHref, readSessions } from '@/lib/claude';
 import { siteKey } from '@/lib/cloudflare';
 import { readLocalRepos } from '@/lib/local';
+import { severe } from '@/lib/security';
 import { setupChecks } from '@/lib/setup';
 import { ago } from '@/lib/today';
 import { OWNER, PROJECTS } from '../../../../lighthouse.config';
@@ -17,6 +18,7 @@ import { Versions } from '../../_sections/Usage';
 import { Dot, ext, link, num, PageTitle, panel, Problem, Section } from '../../_sections/ui';
 
 const find = (repo: string) => PROJECTS.findIndex(p => p.repo === repo);
+const date = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 export async function generateMetadata(props: PageProps<'/projects/[repo]'>) {
     const i = find((await props.params).repo);
@@ -30,13 +32,13 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
     if (i < 0) notFound();
     const local = process.env.NODE_ENV === 'development';
     const [t, pc, sessions] = await Promise.all([loadToday(), readLocalRepos(), readSessions()]);
-    const { p, live, worker, light } = t.sites[i];
+    const { p, live, worker, light, alerts, expires } = t.sites[i];
     const traffic = t.analytics.data?.traffic.get(siteKey(p.site));
     const w = worker ? t.analytics.data?.workers.get(worker) : undefined;
     const release = p.repoStatus?.release;
     const tasks = t.tasks.filter(x => x.project === p.name);
     const gh = `https://github.com/${OWNER}/${p.repo}`;
-    const checks = setupChecks({ repo: p.repoStatus ?? undefined, uptime: p.uptime, analytics: Boolean(t.analytics.data), traffic, live });
+    const checks = setupChecks({ repo: p.repoStatus ?? undefined, uptime: p.uptime, analytics: Boolean(t.analytics.data), traffic, live, alerts });
     const missing = checks.filter(c => c.done === false);
     const guide = `https://github.com/${OWNER}/checkwork-lighthouse/blob/main/docs/new-site.md`;
 
@@ -48,6 +50,9 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
         ['Visits, 7 days', traffic ? <span className="flex items-center gap-3"><Week days={traffic.days} />{num.format(traffic.visits)}</span> : '–'],
         ['Requests, 24 hours', w ? num.format(w.requests) : '–'],
         ['Errors, 24 hours', w ? num.format(w.errors) : '–', w && w.requests && w.errors / w.requests > 0.01 ? 'text-bad' : undefined],
+        ['Security alerts', !alerts ? '–' : !alerts.on ? 'Off' : alerts.open.length ? `${alerts.open.length} open${severe(alerts) ? `, ${severe(alerts)} high` : ''}` : 'None open', alerts && severe(alerts) ? 'text-bad' : undefined],
+        // .ie publishes no expiry date (no RDAP), so those read as a dash
+        ['Domain expires', expires ? date.format(new Date(expires)) : '–'],
     ];
 
     return (
@@ -65,7 +70,7 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
             </PageTitle>
             {t.problem && <Problem>{t.problem}</Problem>}
 
-            <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line text-sm tabular-nums sm:grid-cols-3 xl:grid-cols-6">
+            <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line text-sm tabular-nums sm:grid-cols-4">
                 {facts.map(([label, value, tone]) => (
                     <div key={label} className="bg-canvas px-4 py-3">
                         <dt className="text-xs text-fg-muted">{label}</dt>

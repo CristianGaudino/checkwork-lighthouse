@@ -40,7 +40,7 @@ export default async function Overview() {
 
                 <Section title="Sites" aside={<Link className={link} href="/usage">Usage</Link>}>
                     <Sites rows={t.sites} analytics={t.analytics.data} known={!t.problem} />
-                    {t.deploys.setup && <p className="mt-2 text-sm text-fg-muted">{t.deploys.setup}</p>}
+                    {[t.deploys.setup, t.security.setup].filter(Boolean).map(text => <p key={text} className="mt-2 text-sm text-fg-muted">{text}</p>)}
                 </Section>
 
                 {t.usage.minutes && <Minutes compact m={t.usage.minutes} />}

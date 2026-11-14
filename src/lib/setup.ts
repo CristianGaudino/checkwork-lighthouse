@@ -1,6 +1,7 @@
 import type { SiteTraffic } from './cloudflare';
 import type { RepoStatus } from './github';
 import type { LiveState } from './live';
+import type { Alerts } from './security';
 import type { Uptime } from './uptime';
 
 /** `done`: null when the source that would say didn't answer. `anchor`: the section of docs/new-site.md that sets it up. */
@@ -8,9 +9,10 @@ export type Check = { label: string; done: boolean | null; fix: string; anchor: 
 
 /**
  * What a site needs for Lighthouse to show all of it, each with what to do when it's missing.
- * `uptime` and `repo` are undefined when that source didn't answer; `traffic` is only known once analytics answered.
+ * `uptime`, `repo` and `alerts` are undefined when that source didn't answer (`alerts` null too: the token can't read that repo's);
+ * `traffic` is only known once analytics answered.
  */
-export function setupChecks(s: { repo: RepoStatus | undefined; uptime: Uptime | null | undefined; analytics: boolean; traffic: SiteTraffic | undefined; live: LiveState | null }): Check[] {
+export function setupChecks(s: { repo: RepoStatus | undefined; uptime: Uptime | null | undefined; analytics: boolean; traffic: SiteTraffic | undefined; live: LiveState | null; alerts: Alerts | null | undefined }): Check[] {
     const { repo } = s;
     return [
         { label: 'Uptime monitor', done: s.uptime === undefined ? null : s.uptime !== null, fix: 'Add an HTTP monitor for the site in UptimeRobot', anchor: 'uptime' },
@@ -20,5 +22,6 @@ export function setupChecks(s: { repo: RepoStatus | undefined; uptime: Uptime | 
         repo?.worker
             ? { label: 'Deploys', done: repo.deploysWorker, fix: 'Add a workflow that runs wrangler deploy', anchor: 'deploys' }
             : { label: 'Deploys', done: repo ? s.live !== null : null, fix: 'Connect the repo to its host so each deploy is recorded on GitHub', anchor: 'deploys' },
+        { label: 'Security alerts', done: s.alerts ? s.alerts.on : null, fix: 'Turn on Dependabot alerts in the repo settings', anchor: 'security-alerts' },
     ];
 }
