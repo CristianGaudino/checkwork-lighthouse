@@ -37,14 +37,18 @@ export function checkIssue(form: { title: unknown; body: unknown; type: unknown 
     return { title, body, type };
 }
 
+type GhJson = { message?: string; html_url?: string; number?: number; workflow_runs?: { id: number; conclusion: string | null }[] };
+
 async function github(token: string, method: string, path: string, body?: object) {
     const res = await fetch(`https://api.github.com/repos/${OWNER}/${path}`, {
         method,
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'user-agent': 'lighthouse', 'x-github-api-version': '2022-11-28' },
         body: body && JSON.stringify(body),
         signal: AbortSignal.timeout(15_000),
-    });
-    const json = (await res.json().catch(() => ({}))) as { message?: string; html_url?: string; number?: number; workflow_runs?: { id: number; conclusion: string | null }[] };
+    }).catch(() => null);
+    // No answer (a timeout, the network) is a refusal like any other, so a batch still reports what it did before it
+    if (!res) return { status: 0, json: { message: 'GitHub did not answer. Check on GitHub before trying again' } as GhJson };
+    const json = (await res.json().catch(() => ({}))) as GhJson;
     return { status: res.status, json };
 }
 

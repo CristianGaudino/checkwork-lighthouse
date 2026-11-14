@@ -95,6 +95,9 @@ it('counts a finished or stuck session as needing you for twelve hours, a questi
     expect(needsYou(s('waiting', '2026-11-13T01:00:00Z'), NOW)).toBe(true);
     expect(needsYou(s('waiting', '2026-11-12T23:00:00Z'), NOW)).toBe(false);
     expect(needsYou(s('blocked', '2026-11-12T23:00:00Z'), NOW)).toBe(false);
+    // A three-minute build isn't you; ten minutes on one step most likely is a permission prompt
+    expect(needsYou(s('blocked', '2026-11-13T11:57:00Z'), NOW)).toBe(false);
+    expect(needsYou(s('blocked', '2026-11-13T11:50:00Z'), NOW)).toBe(true);
     expect(needsYou(s('question', '2026-11-12T00:00:00Z'), NOW)).toBe(true);
     expect(needsYou(s('working', '2026-11-13T11:59:00Z'), NOW)).toBe(false);
 });
@@ -118,6 +121,9 @@ describe('writes to GitHub', () => {
         stub((_m, url) => (url.includes('/pulls/4/') ? answer(409, { message: 'Head branch was modified' }) : answer(200)));
         expect(await mergeAll('t', 'vintage', [{ number: 3, sha: 'a' }, { number: 4, sha: 'b' }, { number: 5, sha: 'c' }]))
             .toEqual({ ok: 'Merged #3, #5. #4 not merged, open it to see why' });
+        // No answer for one of them: the rest still go, and the result says which went in
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => { if (url.includes('/pulls/4/')) throw new Error('timeout'); return answer(200); }));
+        expect(await mergeAll('t', 'vintage', [{ number: 3, sha: 'a' }, { number: 4, sha: 'b' }])).toEqual({ ok: 'Merged #3. #4 not merged, open it to see why' });
         stub(() => answer(405));
         expect(await mergeAll('t', 'vintage', [{ number: 3, sha: 'a' }])).toEqual({ error: 'GitHub merged none of #3. Open them to see why.' });
     });

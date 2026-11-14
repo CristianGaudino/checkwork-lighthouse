@@ -23,7 +23,7 @@ export function Palette({ jumps, local }: { jumps: Jump[]; local: boolean }) {
     const [at, setAt] = useState(0);
 
     useEffect(() => {
-        const open = () => { setQuery(''); setAt(0); dialog.current?.showModal(); };
+        const open = () => { if (dialog.current?.open) return; setQuery(''); setAt(0); dialog.current?.showModal(); };
         const key = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); open(); } };
         window.addEventListener('keydown', key);
         window.addEventListener(OPEN_PALETTE, open);

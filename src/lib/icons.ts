@@ -8,7 +8,7 @@ import type { Project } from '../../lighthouse.config';
 // Only these types reach the page, so a data URI can never carry anything but an image
 const TYPES = new Set(['image/svg+xml', 'image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/webp', 'image/gif', 'image/jpeg']);
 const MAX_BYTES = 48 * 1024; // one icon, not a photo: bigger ones fall back to the tile
-const TIMEOUT = 5000;
+const TIMEOUT = 3000; // the layout waits on these after every Refresh, so a site that is down must not hold it long
 
 /** The icon addresses a page names, best first (SVG, then the largest), then /favicon.ico. */
 export function iconHrefs(html: string, base: string): string[] {
@@ -49,7 +49,9 @@ async function firstIcon(hrefs: string[], site: string): Promise<string | null> 
 export async function fetchIcon(site: string): Promise<string | null> {
     const base = `https://${site}/`;
     const res = await fetch(base, { signal: AbortSignal.timeout(TIMEOUT) }).catch(() => null);
-    const mine = res?.ok && own(res.url || base, site);
+    // No answer at all: the site is down, and its /favicon.ico would only wait out the timeout again
+    if (!res) return null;
+    const mine = res.ok && own(res.url || base, site);
     const html = mine && res.headers.get('content-type')?.includes('html') ? await res.text().catch(() => '') : '';
     return firstIcon(iconHrefs(html, mine ? res.url || base : base), site).catch(() => null);
 }

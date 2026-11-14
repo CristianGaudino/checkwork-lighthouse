@@ -13,7 +13,7 @@ export const KINDS: { kind: Exclude<BeatKind, 'other'>; label: string }[] = [
 ];
 
 /**
- * Keeps an open tab current: reloads its data every minute while it is on screen, puts the count of things that need
+ * Keeps an open tab current: reloads its data every minute while it is on screen (or always, once notifications are on), puts the count of things that need
  * you in the tab title and on the installed app's icon, and shows a desktop notification for anything new of a kind
  * the owner turned on. Settings and what was already seen live in this browser only; storage that fails just means
  * no notifications, never a broken page.
@@ -58,7 +58,8 @@ export function Live({ beats }: { beats: Beat[] }) {
     useEffect(() => {
         let last = Date.now();
         const tick = () => {
-            if (document.visibilityState !== 'visible' || Date.now() - last < EVERY - 5000) return;
+            // A tab out of sight still refreshes once notifications are on: that's when they're needed
+            if ((document.visibilityState !== 'visible' && !prefs().on) || Date.now() - last < EVERY - 5000) return;
             last = Date.now();
             router.refresh();
         };

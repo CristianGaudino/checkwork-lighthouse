@@ -119,13 +119,17 @@ export async function readSessions(now = Date.now()): Promise<Session[] | null> 
 }
 
 const FRESH_MS = 12 * 3_600_000;
+const BLOCKED_MS = 5 * 60_000; // a build or a test run often takes a few minutes; a permission prompt waits longer
 
 /**
- * Sessions that need you: a question always; blocked or handed back only within twelve hours, since a finished session
- * nobody went back to, or one that died mid-step, would otherwise count for two days.
+ * Sessions that need you: a question always; handed back within twelve hours; blocked from five minutes to twelve
+ * hours. A finished session nobody went back to, or one that died mid-step, would otherwise count for two days, and
+ * every three-minute build would ask for you.
  */
-export const needsYou = (s: Session, now = Date.now()) =>
-    s.state === 'question' || ((s.state === 'blocked' || s.state === 'waiting') && now - Date.parse(s.at) < FRESH_MS);
+export function needsYou(s: Session, now = Date.now()) {
+    const age = now - Date.parse(s.at);
+    return s.state === 'question' || (s.state === 'waiting' && age < FRESH_MS) || (s.state === 'blocked' && age >= BLOCKED_MS && age < FRESH_MS);
+}
 
 /** Tokens Claude wrote today (since local midnight) per repo, from every transcript touched today. null outside `next dev`. */
 export async function readUsageToday(now = new Date()): Promise<{ repo: string; tokens: number; sessions: number }[] | null> {
