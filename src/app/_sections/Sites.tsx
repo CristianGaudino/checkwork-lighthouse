@@ -4,6 +4,7 @@ import { siteKey } from '@/lib/cloudflare';
 import type { LiveState } from '@/lib/live';
 import { span, type Light, type ProjectState } from '@/lib/today';
 import type { Uptime } from '@/lib/uptime';
+import { ProjectIcon } from './ProjectIcon';
 import { Dot, n, num } from './ui';
 
 const STATE: Record<Uptime['state'], string> = { up: 'Up', down: 'Down', paused: 'Paused', unknown: 'Checking' };
@@ -58,12 +59,13 @@ export function Sites({ rows, analytics, known }: { rows: SiteRow[]; analytics?:
                             <Link href={`/projects/${p.repo}`} className={`grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-surface/60 active:bg-surface ${COLS}`}>
                                 <span className="flex min-w-0 items-center gap-3">
                                     <Dot light={known ? light : null} />
+                                    <ProjectIcon project={p.repo} />
                                     <span className="truncate text-[15px] font-medium">{p.name}</span>
                                 </span>
                                 <span className={down ? 'text-bad' : 'text-fg-muted'}>{uptimeText(p.uptime)}</span>
                                 <span className={`hidden sm:block ${live?.state === 'behind' ? 'text-warn' : 'text-fg-muted'}`}>{liveText(live)}</span>
                                 {/* On a phone the rest rides along on one line under the name */}
-                                <span className="col-span-2 pl-5 text-fg-muted empty:hidden sm:hidden">
+                                <span className="col-span-2 pl-13 text-fg-muted empty:hidden sm:hidden">
                                     {[live && <span key="l" className={live.state === 'behind' ? 'text-warn' : ''}>{liveText(live)}</span>, prs ? n(prs, 'PR') : null, t ? n(t.visits, 'visit') : null]
                                         .filter(Boolean).flatMap((part, i) => (i ? [', ', part] : [part]))}
                                 </span>

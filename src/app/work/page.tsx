@@ -10,8 +10,13 @@ import { PageTitle, Problem, Section } from '../_sections/ui';
 
 export const metadata = { title: 'Work' };
 
-export default async function Work() {
+const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v.slice(0, 2000) : undefined);
+
+export default async function Work(props: PageProps<'/work'>) {
     await requireAdmin();
+    // A task's File an issue link fills the form in; the action checks every field again
+    const q = await props.searchParams;
+    const start = { repo: one(q.repo), title: one(q.title), body: one(q.body) };
     const local = process.env.NODE_ENV === 'development';
     const t = await loadToday();
     return (
@@ -20,7 +25,7 @@ export default async function Work() {
             {[t.problem, t.uptime.problem].filter(Boolean).map(text => <Problem key={text}>{text}</Problem>)}
             <div className="mt-10">
                 {t.tasks.length > 0 && <Section title="To do"><Tasks tasks={t.tasks} local={local} /></Section>}
-                <NewIssue action={newIssue} repos={PROJECTS.map(p => ({ repo: p.repo, name: p.name }))} />
+                <NewIssue action={newIssue} repos={PROJECTS.map(p => ({ repo: p.repo, name: p.name }))} start={start} />
                 <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
                     <Board local={local} />
                 </Suspense>

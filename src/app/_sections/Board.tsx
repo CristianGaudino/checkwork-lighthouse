@@ -1,7 +1,8 @@
 import { automationGaps, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
-import { askHref } from '@/lib/claude';
+import { askHref } from '@/lib/vscode';
 import { memo, MINUTE } from '@/lib/memo';
 import { PROJECTS } from '../../../lighthouse.config';
+import { ProjectIcon } from './ProjectIcon';
 import { ext, link, Problem, Section, Setup } from './ui';
 
 /**
@@ -46,7 +47,7 @@ export async function Board({ local, project }: { local: boolean; project?: stri
                                         <li key={`${card.project} ${card.title}`} className="px-4 py-3 text-sm">
                                             <a {...ext} href={card.href} className="hover:underline hover:underline-offset-4">{card.title}</a>
                                             <span className="mt-0.5 flex flex-wrap gap-x-3 text-fg-muted">
-                                                {!project && <span>{card.project}</span>}
+                                                {!project && <span className="flex items-center gap-1.5"><ProjectIcon project={card.project} className="size-4 text-[8px]" />{card.project}</span>}
                                                 {card.kind && <span>{card.kind}</span>}
                                                 {local && <a className={link} href={askHref(`Work on "${card.title}" in ${card.project}: ${card.href}`)} title="Opens Claude Code in VS Code with this as the prompt">Ask Claude</a>}
                                             </span>

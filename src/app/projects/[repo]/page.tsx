@@ -1,7 +1,8 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/access';
-import { askHref, readSessions } from '@/lib/claude';
+import { readSessions } from '@/lib/claude';
+import { askHref } from '@/lib/vscode';
 import { siteKey } from '@/lib/cloudflare';
 import { readLocalRepos } from '@/lib/local';
 import { severe } from '@/lib/security';
@@ -13,6 +14,7 @@ import { Board } from '../../_sections/Board';
 import { ClaudeSessions } from '../../_sections/Claude';
 import { Git } from '../../_sections/Pc';
 import { liveText, uptimeText, Week } from '../../_sections/Sites';
+import { ProjectIcon } from '../../_sections/ProjectIcon';
 import { DeployLink, Tasks } from '../../_sections/Tasks';
 import { Versions } from '../../_sections/Usage';
 import { Dot, ext, link, num, PageTitle, panel, Problem, Section } from '../../_sections/ui';
@@ -66,7 +68,7 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
                     {local && live?.state === 'behind' && worker && <DeployLink repo={p.repo} />}
                 </span>
             }>
-                <span className="flex items-center gap-3"><Dot light={t.problem ? null : light} className="size-2.5" />{p.name}</span>
+                <span className="flex items-center gap-3"><Dot light={t.problem ? null : light} className="size-2.5" /><ProjectIcon project={p.repo} className="size-9 rounded-lg text-sm" />{p.name}</span>
             </PageTitle>
             {t.problem && <Problem>{t.problem}</Problem>}
 
@@ -120,7 +122,7 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
                 {!t.problem && <Versions repos={t.repos} only={p.repo} />}
 
                 {sessions && <ClaudeSessions title="Claude sessions" sessions={sessions.filter(s => s.repo === p.repo)} />}
-                {pc?.repos.some(r => r.name === p.repo) && <Git title="On this PC" repos={pc.repos.filter(r => r.name === p.repo)} />}
+                {pc?.repos.some(r => r.name === p.repo) && <Git title="On this PC" root={pc.root} repos={pc.repos.filter(r => r.name === p.repo)} />}
             </div>
         </>
     );

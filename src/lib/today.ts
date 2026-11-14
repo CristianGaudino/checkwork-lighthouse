@@ -9,8 +9,14 @@ import type { Uptime } from './uptime';
  * `pr`: set on a PR task, so the page can offer Approve (when someone else opened it) and Merge (see prTask). `sha` is the
  * head the page showed: the merge is refused if anything was pushed since.
  * `deploy`: the repo whose site is behind main, so this PC can offer to deploy it (docs/deploy-from-pc.md).
+ * `fix`: a prompt for Claude Code, offered locally as Fix with Claude. `rerun`: a commit whose failed jobs can run again.
+ * `dispatch`: the repo's deploy workflow, to run from here. `batch`: Dependabot PRs whose checks pass, to merge in one go.
  */
-export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; deploy?: string; pr?: { repo: string; number: number; sha: string; mine: boolean; canMerge: boolean } };
+export type Task = {
+    project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; deploy?: string;
+    pr?: { repo: string; number: number; sha: string; mine: boolean; canMerge: boolean };
+    fix?: string; rerun?: { repo: string; sha: string }; dispatch?: { repo: string; workflow: string }; batch?: { repo: string; prs: { number: number; sha: string }[] };
+};
 export type Light = 'bad' | 'warn' | 'ok';
 export type ProjectState = Project & { repoStatus: RepoStatus | undefined; uptime: Uptime | null | undefined };
 
@@ -37,7 +43,9 @@ function prTask(project: string, repo: string, checksPrs: boolean, pr: PullReque
     const who = pr.author === OWNER ? 'Updated' : `From ${pr.author}, updated`;
     const detail = `${who} ${ago(pr.updatedAt, now)}${stale ? ', gone quiet' : ''}, ${CHECK_LABEL[pr.checks]}`;
     const base = { project, title: `#${pr.number} ${pr.title}`, detail, href: pr.url, pr: pr.sha ? { repo, number: pr.number, sha: pr.sha, mine: pr.author === OWNER, canMerge: canMerge(pr, checksPrs) } : undefined };
-    if (pr.checks === 'failing') return { ...base, level: 1, action: 'Fix checks on' };
+    if (pr.checks === 'failing') {
+        return { ...base, level: 1, action: 'Fix checks on', fix: `The checks on ${pr.url} fail. Check out its branch, find out why and fix it.`, rerun: pr.sha ? { repo, sha: pr.sha } : undefined };
+    }
     if (pr.review === 'changes') return { ...base, level: 2, action: 'Update' };
     if (pr.review === 'approved' && pr.checks !== 'running') return { ...base, level: 2, action: 'Merge' };
     return { ...base, level: 2, action: 'Review' };
@@ -50,9 +58,10 @@ function prTask(project: string, repo: string, checksPrs: boolean, pr: PullReque
 export function mainTask(p: Project, r: RepoStatus | undefined, live: LiveState | null): Task | null {
     if (r?.main.checks !== 'failing') return null;
     const href = `https://github.com/${OWNER}/${p.repo}/actions?query=branch%3Amain`;
+    const more = { fix: `Checks failed on main's newest commit in ${p.repo}: ${href}. Find out why and fix it on a new branch.`, rerun: r.main.sha ? { repo: p.repo, sha: r.main.sha } : undefined };
     return live?.state === 'live'
-        ? { project: p.name, level: 2, action: 'Fix main', detail: 'Checks failed on its newest commit, though the site runs it', href }
-        : { project: p.name, level: 1, action: 'Fix main', detail: 'Checks failed on its newest commit', href };
+        ? { project: p.name, level: 2, action: 'Fix main', detail: 'Checks failed on its newest commit, though the site runs it', href, ...more }
+        : { project: p.name, level: 1, action: 'Fix main', detail: 'Checks failed on its newest commit', href, ...more };
 }
 
 const MONITORS = 'https://dashboard.uptimerobot.com/monitors';
@@ -60,7 +69,7 @@ const MONITORS = 'https://dashboard.uptimerobot.com/monitors';
 function uptimeTask(p: Project, u: Uptime | null): Task | null {
     const site = p.site.replace(/^www\./, '');
     if (!u) return { project: p.name, level: 2, action: 'Add a monitor for', title: site, detail: 'UptimeRobot is not watching it', href: MONITORS };
-    if (u.state === 'down') return { project: p.name, level: 1, action: 'Site down:', title: site, detail: u.seconds === null ? 'Per UptimeRobot' : `Down for ${span(u.seconds)}`, href: `${MONITORS}/${u.id}`, incidentRepo: p.repo };
+    if (u.state === 'down') return { project: p.name, level: 1, action: 'Site down:', title: site, detail: u.seconds === null ? 'Per UptimeRobot' : `Down for ${span(u.seconds)}`, href: `${MONITORS}/${u.id}`, incidentRepo: p.repo, fix: `${site} is down. Find out why from the newest commits and deploys on main, and say what to do before changing anything.` };
     if (u.state === 'paused') return { project: p.name, level: 2, action: 'Resume monitoring for', title: site, detail: 'The UptimeRobot monitor is paused', href: `${MONITORS}/${u.id}` };
     return null;
 }
@@ -85,7 +94,13 @@ export function buildBoard(projects: Project[], repos: RepoStatus[] | undefined,
             // Dependency updates are one task per repo, so a batch of them doesn't bury the real work
             if (bots.length) {
                 const failing = bots.filter(pr => pr.checks === 'failing').length;
-                mine.push({ project: p.name, level: failing ? 1 : 2, action: `Review ${plural(bots.length, 'Dependabot update')}`, detail: failing ? `${failing} with failing checks` : 'Dependency bumps', href: `https://github.com/${OWNER}/${p.repo}/pulls/app%2Fdependabot` });
+                const href = `https://github.com/${OWNER}/${p.repo}/pulls/app%2Fdependabot`;
+                const ready = bots.flatMap(pr => (pr.sha && canMerge(pr, r.checksPrs) ? [{ number: pr.number, sha: pr.sha }] : []));
+                mine.push({
+                    project: p.name, level: failing ? 1 : 2, action: `Review ${plural(bots.length, 'Dependabot update')}`, detail: failing ? `${failing} with failing checks` : 'Dependency bumps', href,
+                    fix: failing ? `Some Dependabot PRs in ${p.repo} fail their checks: ${href}. Find out why and fix them.` : undefined,
+                    batch: ready.length ? { repo: p.repo, prs: ready } : undefined,
+                });
             }
             const n = r.release?.unreleased ?? 0;
             // Only where releases deploy: a repo that deploys every merge has nothing waiting

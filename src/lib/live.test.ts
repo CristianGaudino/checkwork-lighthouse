@@ -4,7 +4,7 @@ import { lastDeploy, liveState } from './live';
 
 const now = Date.parse('2026-11-13T22:00:00Z');
 const repo = (over: Partial<NonNullable<RepoStatus>> = {}): RepoStatus => ({
-    prs: [], release: null, releasesDeploy: false, checksPrs: true, deploysWorker: true, isPrivate: true, worker: 'w', versions: {},
+    prs: [], release: null, releasesDeploy: false, checksPrs: true, deploysWorker: true, deployWorkflow: null, isPrivate: true, worker: 'w', versions: {},
     main: { sha: null, head: '2026-11-13T21:00:00Z', merges: ['2026-11-13T21:00:00Z', '2026-11-13T20:00:00Z', '2026-11-12T10:00:00Z'], checks: 'passing' }, ...over,
 });
 

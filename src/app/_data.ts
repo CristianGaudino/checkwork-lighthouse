@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { fetchRepos, fetchRuns, type PullRequest, type RepoStatus } from '@/lib/github';
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes';
@@ -9,6 +10,9 @@ import { ago, buildBoard, lightOf, mainTask, type Task } from '@/lib/today';
 import { memo, MINUTE } from '@/lib/memo';
 import { alertTask, fetchAlerts, type Alerts } from '@/lib/security';
 import { domainOf, domainTasks, fetchExpiry } from '@/lib/domains';
+import { fetchIcon, iconsByRepo } from '@/lib/icons';
+import { buildActivity, fetchFailedRuns, fetchHistory, type Event } from '@/lib/activity';
+import { fetchClaudeCost, fetchCloudflarePlans, type Plan } from '@/lib/costs';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
 /** Each source loads on its own and fails on its own: a problem comes back as a sentence for the page, never a throw. */
@@ -141,8 +145,55 @@ async function loadDomains(): Promise<Map<string, string>> {
     }
 }
 
-/** Everything behind the task queue, shared by the page and the morning brief so both see the same picture. */
-export async function loadToday() {
+/** The last week across every project, for Activity and the Overview. Failed runs that can't be read are left out quietly. */
+export async function loadActivity(): Promise<{ events?: Event[]; problem?: string }> {
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) return {}; // loadRepos already says the token is missing
+    try {
+        const [t, history, failed] = await Promise.all([
+            loadToday(),
+            memo('history', 2 * MINUTE, () => fetchHistory(token, PROJECTS)),
+            Promise.all(PROJECTS.map(p => memo(`failed ${p.repo}`, 2 * MINUTE, () => fetchFailedRuns(token, p.repo)).catch(error => { console.error('Could not load failed runs', error); return null; }))),
+        ]);
+        return { events: buildActivity(t.sites, history, failed) };
+    } catch (error) {
+        console.error('Could not load activity', error);
+        return { problem: 'GitHub did not answer, so recent activity is missing. Reload in a minute.' };
+    }
+}
+
+const refusedBy = (error: unknown) => /: 40[13]$/.test(String(error instanceof Error ? error.message : error));
+
+/** Claude API spend and Cloudflare's plans, for Costs. A missing key is a quiet note; a refusal says which permission. */
+export async function loadCosts(): Promise<{ claude?: number; claudeNote?: string; plans?: Plan[]; plansNote?: string }> {
+    const admin = process.env.ANTHROPIC_ADMIN_KEY, token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const [claude, cloudflare] = await Promise.all([
+        admin
+            ? memo('claude cost', 30 * MINUTE, () => fetchClaudeCost(admin)).then(claude => ({ claude }), error => {
+                console.error('Could not load Claude API cost', error);
+                return { claudeNote: refusedBy(error) ? 'Anthropic refused ANTHROPIC_ADMIN_KEY. It must be an Admin API key.' : 'Anthropic did not answer. Reload in a minute.' };
+            })
+            : { claudeNote: 'Set ANTHROPIC_ADMIN_KEY (an Admin API key from the Claude Console) to see it.' },
+        token && account
+            ? memo('cloudflare plans', 60 * MINUTE, () => fetchCloudflarePlans(token, account)).then(plans => ({ plans }), error => {
+                console.error('Could not load Cloudflare subscriptions', error);
+                return { plansNote: refusedBy(error) ? 'Add Billing: Read to CLOUDFLARE_ANALYTICS_TOKEN to see it.' : 'Cloudflare did not answer. Reload in a minute.' };
+            })
+            : { plansNote: 'Set CLOUDFLARE_ANALYTICS_TOKEN and CLOUDFLARE_ACCOUNT_ID to see it.' },
+    ]);
+    return { ...claude, ...cloudflare };
+}
+
+/** Each project's favicon by repo, for the layout's icon classes. Never fails: a site that doesn't answer gets its letter tile. */
+export const loadIcons = () =>
+    // Favicons change rarely; the page's Refresh forgets them along with everything else
+    memo('icons', 720 * MINUTE, async () => iconsByRepo(PROJECTS, await Promise.all(PROJECTS.map(p => fetchIcon(p.site)))));
+
+/**
+ * Everything behind the task queue, shared by the page, the layout and the morning brief so all see the same picture.
+ * cache(): the layout and the page ask in the same request, and share one load.
+ */
+export const loadToday = cache(async function loadToday() {
     const reposLoad = loadRepos();
     // The billing report is fetched alongside; it only needs the repos' visibility to count the private ones
     const publicRepos = reposLoad.then(({ repos }) => new Set(PROJECTS.filter((_, i) => repos[i]?.isPrivate === false).map(p => p.repo)));
@@ -168,7 +219,10 @@ export async function loadToday() {
             if (l?.state !== 'behind') return [];
             // Only a Worker can be deployed from this PC (docs/deploy-from-pc.md); a Vercel site's deploy failed or was skipped
             return [rows[i].worker
-                ? { project: p.name, level: 2 as const, action: 'Deploy', title: l.label, detail: `Live since ${ago(l.since)}`, href: `https://github.com/${OWNER}/${p.repo}/actions`, deploy: p.repo }
+                ? {
+                    project: p.name, level: 2 as const, action: 'Deploy', title: l.label, detail: `Live since ${ago(l.since)}`, href: `https://github.com/${OWNER}/${p.repo}/actions`, deploy: p.repo,
+                    dispatch: repos[i]?.deployWorkflow ? { repo: p.repo, workflow: repos[i]!.deployWorkflow! } : undefined,
+                }
                 : { project: p.name, level: 2 as const, action: 'Check the deploy', title: l.label, detail: `Live since ${ago(l.since)}`, href: `https://github.com/${OWNER}/${p.repo}/deployments` }];
         }),
         ...(usage.minutes ? [minutesTask(usage.minutes)].filter(t => t !== null) : []),
@@ -182,4 +236,4 @@ export async function loadToday() {
         alerts: security.alerts?.[i], expires: domains.get(domainOf(p.site)) ?? null,
     }));
     return { repos, problem, uptime, usage, analytics, deploys, security, tasks, rows, sites };
-}
+});

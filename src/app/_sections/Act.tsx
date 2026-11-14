@@ -25,17 +25,17 @@ export function ActButton({ action, label, fields, confirm }: { action: Action; 
     );
 }
 
-/** Quick capture: a new issue in any project, from a phone. */
-export function NewIssue({ action, repos }: { action: Action; repos: { repo: string; name: string }[] }) {
+/** Quick capture: a new issue in any project, from a phone. `start`: filled in from a task's File an issue link, and opened. */
+export function NewIssue({ action, repos, start }: { action: Action; repos: { repo: string; name: string }[]; start?: { repo?: string; title?: string; body?: string } }) {
     const [state, run, pending] = useActionState(action, {});
     const field = 'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg';
     return (
-        <details className="mt-6">
+        <details id="new-issue" className="mt-6 scroll-mt-6" open={Boolean(start?.title)}>
             <summary className="cursor-pointer text-sm font-medium text-fg-muted hover:text-fg">New issue</summary>
             <form action={run} className="mt-3 grid max-w-2xl gap-3">
                 <div className="grid gap-3 sm:grid-cols-2">
                     <label className="grid gap-1 text-sm text-fg-muted">Project
-                        <select name="repo" required className={field} defaultValue="">
+                        <select name="repo" required className={field} defaultValue={start?.repo ?? ''}>
                             <option value="" disabled>Pick one</option>
                             {repos.map(r => <option key={r.repo} value={r.repo}>{r.name}</option>)}
                         </select>
@@ -47,10 +47,10 @@ export function NewIssue({ action, repos }: { action: Action; repos: { repo: str
                     </label>
                 </div>
                 <label className="grid gap-1 text-sm text-fg-muted">Title
-                    <input name="title" required maxLength={256} className={field} />
+                    <input name="title" required maxLength={256} className={field} defaultValue={start?.title} />
                 </label>
                 <label className="grid gap-1 text-sm text-fg-muted">Details
-                    <textarea name="body" rows={3} className={field} />
+                    <textarea name="body" rows={3} className={field} defaultValue={start?.body} />
                 </label>
                 <div className="flex flex-wrap items-center gap-3">
                     <button type="submit" disabled={pending} className={button}>{pending ? 'Opening' : 'Open issue'}</button>

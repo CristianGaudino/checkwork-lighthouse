@@ -57,12 +57,13 @@ export type PullRequest = {
 };
 /**
  * `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site.
- * `checksPrs`: a workflow runs on pull requests. `deploysWorker`: a workflow runs `wrangler deploy`.
+ * `checksPrs`: a workflow runs on pull requests. `deploysWorker`: a workflow runs `wrangler deploy`; `deployWorkflow` is the
+ * file of one that can also be run by hand (workflow_dispatch), for the Run deploy button.
  * `main`: when main's newest commit and its recent merges landed, newest first, to tell what the live Worker is missing,
  * and how the newest commit's checks went ('none' too when the token can't see them: see fetchRuns).
  */
 export type RepoStatus = {
-    prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; checksPrs: boolean; deploysWorker: boolean; isPrivate: boolean;
+    prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; checksPrs: boolean; deploysWorker: boolean; deployWorkflow: string | null; isPrivate: boolean;
     worker: string | null; versions: Record<string, string>; main: { sha: string | null; head: string | null; merges: string[]; checks: PullRequest['checks'] };
 } | null;
 
@@ -112,6 +113,7 @@ export function parseRepo(raw: unknown): RepoStatus {
         releasesDeploy: workflows.some(w => w.name === 'release.yml'),
         checksPrs: workflows.some(w => /^\s*pull_request\b|^on:.*\bpull_request\b/m.test(w.object?.text ?? '')),
         deploysWorker: workflows.some(w => /wrangler(-action|\s+deploy)/.test(w.object?.text ?? '')),
+        deployWorkflow: workflows.find(w => /wrangler(-action|\s+deploy)/.test(w.object?.text ?? '') && /workflow_dispatch/.test(w.object?.text ?? ''))?.name ?? null,
         isPrivate: repo.isPrivate ?? true,
         worker: workerName(repo.wrangler?.text),
         versions: readVersions(repo.pkg?.text),
@@ -146,7 +148,8 @@ export async function fetchRepos(projects: Project[], token: string): Promise<Re
 }
 
 const Runs = z.object({ workflow_runs: z.array(z.object({ status: z.string().nullable(), conclusion: z.string().nullable() })) });
-const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
+/** Run conclusions that count as failed checks, here and for the Re-run button (act.ts). */
+export const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
 
 /** How a commit's workflow runs went: any failure fails it, then any still going means running. */
 export function runsChecks(runs: z.infer<typeof Runs>['workflow_runs']): PullRequest['checks'] {

@@ -79,3 +79,49 @@ export async function readLocalRepos(): Promise<{ root: string; repos: LocalRepo
     }));
     return { root, repos: repos.filter((r): r is LocalRepo => r !== null).sort((a, b) => Number(needsLook(b)) - Number(needsLook(a)) || a.name.localeCompare(b.name)) };
 }
+
+type Listen = { LocalPort: number; OwningProcess: number };
+type Proc = { ProcessId: number; ParentProcessId: number; CommandLine: string | null };
+
+/**
+ * Which repo each listening port belongs to: the node process (or a parent, up a few levels) whose command line runs
+ * from that repo's folder. One entry per repo, its lowest port.
+ */
+export function matchServers(root: string, repos: string[], listening: Listen[], procs: Proc[]): { repo: string; port: number }[] {
+    const byId = new Map(procs.map(p => [p.ProcessId, p]));
+    const base = root.replace(/\\/g, '/').toLowerCase().replace(/\/$/, '');
+    const repoOf = (pid: number) => {
+        for (let p = byId.get(pid), hops = 0; p && hops < 5; p = byId.get(p.ParentProcessId), hops++) {
+            const line = (p.CommandLine ?? '').replace(/\\/g, '/').toLowerCase();
+            const hit = repos.find(r => line.includes(`${base}/${r.toLowerCase()}/`));
+            if (hit) return hit;
+        }
+        return null;
+    };
+    const found = new Map<string, number>();
+    for (const l of [...listening].sort((a, b) => a.LocalPort - b.LocalPort)) {
+        const repo = repoOf(l.OwningProcess);
+        if (repo && !found.has(repo)) found.set(repo, l.LocalPort);
+    }
+    return [...found].map(([repo, port]) => ({ repo, port }));
+}
+
+/**
+ * Dev servers running on this PC, by repo, with their port. Reads only: one PowerShell call lists the listening ports
+ * and node processes. null outside `next dev`.
+ * shortcut: Windows only (Get-NetTCPConnection), which is this PC; lsof would do it on a Mac.
+ */
+export async function readDevServers(root: string, repos: string[]): Promise<{ repo: string; port: number }[] | null> {
+    if (process.env.NODE_ENV !== 'development' || process.platform !== 'win32') return null;
+    const { execFile } = await import('node:child_process');
+    const script = "$l = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort, OwningProcess); $p = @(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, ParentProcessId, CommandLine); @{ l = $l; p = $p } | ConvertTo-Json -Depth 3 -Compress";
+    try {
+        const out = await new Promise<string>((resolve, reject) =>
+            execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 15_000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => (error ? reject(error) : resolve(stdout))));
+        const { l = [], p = [] } = JSON.parse(out) as { l?: Listen[]; p?: Proc[] };
+        return matchServers(root, repos, l, p);
+    } catch (error) {
+        console.error('Could not list dev servers', error);
+        return [];
+    }
+}

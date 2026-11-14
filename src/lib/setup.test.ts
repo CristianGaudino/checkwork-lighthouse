@@ -3,7 +3,7 @@ import type { RepoStatus } from './github';
 import { setupChecks } from './setup';
 
 const repo = (over: Partial<NonNullable<RepoStatus>> = {}): RepoStatus => ({
-    prs: [], release: null, releasesDeploy: false, checksPrs: true, deploysWorker: true, isPrivate: true, worker: 'w', versions: {},
+    prs: [], release: null, releasesDeploy: false, checksPrs: true, deploysWorker: true, deployWorkflow: null, isPrivate: true, worker: 'w', versions: {},
     main: { sha: null, head: null, merges: [], checks: 'none' }, ...over,
 });
 const traffic = { visits: 1, views: 1, days: [], topPaths: [] };
