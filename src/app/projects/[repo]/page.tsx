@@ -1,16 +1,17 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/access';
-import { readSessions } from '@/lib/claude';
+import { askHref, readSessions } from '@/lib/claude';
 import { siteKey } from '@/lib/cloudflare';
 import { readLocalRepos } from '@/lib/local';
+import { setupChecks } from '@/lib/setup';
 import { ago } from '@/lib/today';
 import { OWNER, PROJECTS } from '../../../../lighthouse.config';
 import { loadToday } from '../../_data';
 import { Board } from '../../_sections/Board';
 import { ClaudeSessions } from '../../_sections/Claude';
 import { Git } from '../../_sections/Pc';
-import { liveText, siteLight, uptimeText, Week } from '../../_sections/Sites';
+import { liveText, uptimeText, Week } from '../../_sections/Sites';
 import { DeployLink, Tasks } from '../../_sections/Tasks';
 import { Versions } from '../../_sections/Usage';
 import { Dot, ext, link, num, PageTitle, panel, Problem, Section } from '../../_sections/ui';
@@ -29,12 +30,15 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
     if (i < 0) notFound();
     const local = process.env.NODE_ENV === 'development';
     const [t, pc, sessions] = await Promise.all([loadToday(), readLocalRepos(), readSessions()]);
-    const { p, live, worker } = t.sites[i];
+    const { p, live, worker, light } = t.sites[i];
     const traffic = t.analytics.data?.traffic.get(siteKey(p.site));
     const w = worker ? t.analytics.data?.workers.get(worker) : undefined;
     const release = p.repoStatus?.release;
     const tasks = t.tasks.filter(x => x.project === p.name);
     const gh = `https://github.com/${OWNER}/${p.repo}`;
+    const checks = setupChecks({ repo: p.repoStatus ?? undefined, uptime: p.uptime, analytics: Boolean(t.analytics.data), traffic, live });
+    const missing = checks.filter(c => c.done === false);
+    const guide = `https://github.com/${OWNER}/checkwork-lighthouse/blob/main/docs/new-site.md`;
 
     // The site's vital signs, as a short sheet of label and value
     const facts: [string, React.ReactNode, string?][] = [
@@ -57,7 +61,7 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
                     {local && live?.state === 'behind' && worker && <DeployLink repo={p.repo} />}
                 </span>
             }>
-                <span className="flex items-center gap-3"><Dot light={t.problem ? null : siteLight(p, live)} className="size-2.5" />{p.name}</span>
+                <span className="flex items-center gap-3"><Dot light={t.problem ? null : light} className="size-2.5" />{p.name}</span>
             </PageTitle>
             {t.problem && <Problem>{t.problem}</Problem>}
 
@@ -71,6 +75,25 @@ export default async function Project(props: PageProps<'/projects/[repo]'>) {
             </dl>
 
             <div className="mt-10">
+                {/* Only when something is missing: a set-up site has nothing to show here */}
+                {missing.length > 0 && (
+                    <Section title="Setup" aside={`${checks.filter(c => c.done).length} of ${checks.length} done`}>
+                        <ul className={`${panel} text-sm`}>
+                            {missing.map(c => (
+                                <li key={c.label} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3">
+                                    <span><span className="font-medium">{c.label}</span><span className="text-fg-muted"> {c.fix}</span></span>
+                                    <a {...ext} className={`${link} text-fg-muted`} href={`${guide}#${c.anchor}`}>How</a>
+                                </li>
+                            ))}
+                        </ul>
+                        {local && (
+                            <p className="mt-2 text-sm">
+                                <a className={link} href={askHref(`Finish setting up ${p.repo} for Lighthouse. Missing: ${missing.map(c => c.label).join(', ')}. Follow ${process.cwd()}/docs/new-site.md for those parts.`)} title="Opens Claude Code in VS Code with the setup steps">Set up with Claude</a>
+                            </p>
+                        )}
+                    </Section>
+                )}
+
                 {tasks.length > 0 && <Section title="Needs you"><Tasks tasks={tasks} local={local} /></Section>}
 
                 <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>

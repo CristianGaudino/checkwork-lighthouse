@@ -19,9 +19,6 @@ export function liveText(l: LiveState | null) {
     return l.state === 'live' ? 'Live' : l.state === 'deploying' ? 'Deploying' : l.label;
 }
 
-/** The project's light, amber too when its site runs behind main. */
-export const siteLight = (p: ProjectState, l: LiveState | null): Light => (p.light === 'ok' && l?.state === 'behind' ? 'warn' : p.light);
-
 /** Visits per day for the week, today last and brighter. Scaled to the site's own busiest day, so its shape reads at any size. */
 export function Week({ days }: { days: number[] }) {
     const top = Math.max(1, ...days);
@@ -35,7 +32,7 @@ export function Week({ days }: { days: number[] }) {
     );
 }
 
-export type SiteRow = { p: ProjectState; live: LiveState | null; worker: string | null };
+export type SiteRow = { p: ProjectState; live: LiveState | null; worker: string | null; light: Light };
 
 const COLS = 'sm:grid-cols-[minmax(11rem,1.3fr)_minmax(7rem,1fr)_minmax(8rem,1fr)_3.5rem_minmax(7rem,1fr)_4.5rem]';
 
@@ -50,7 +47,7 @@ export function Sites({ rows, analytics, known }: { rows: SiteRow[]; analytics?:
                 <span>Site</span><span>Uptime</span><span>Running</span><span className="text-right">PRs</span><span>Visits, 7 days</span><span className="text-right">Errors</span>
             </div>
             <ul className="divide-y divide-line">
-                {rows.map(({ p, live, worker }) => {
+                {rows.map(({ p, live, worker, light }) => {
                     const t = analytics?.traffic.get(siteKey(p.site));
                     const w = worker ? analytics?.workers.get(worker) : undefined;
                     const rate = w?.requests ? w.errors / w.requests : 0;
@@ -60,7 +57,7 @@ export function Sites({ rows, analytics, known }: { rows: SiteRow[]; analytics?:
                         <li key={p.repo}>
                             <Link href={`/projects/${p.repo}`} className={`grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-surface/60 active:bg-surface ${COLS}`}>
                                 <span className="flex min-w-0 items-center gap-3">
-                                    <Dot light={known ? siteLight(p, live) : null} />
+                                    <Dot light={known ? light : null} />
                                     <span className="truncate text-[15px] font-medium">{p.name}</span>
                                 </span>
                                 <span className={down ? 'text-bad' : 'text-fg-muted'}>{uptimeText(p.uptime)}</span>

@@ -46,7 +46,7 @@ export function Tasks({ tasks, compact, local }: { tasks: Task[]; compact?: bool
                                 <div className="flex flex-wrap gap-3">
                                     {/* GitHub won't let you approve your own PR (Claude's run as you), so Approve is only for others' */}
                                     {!t.pr.mine && <ActButton action={approvePr} label="Approve" fields={{ repo: t.pr.repo, number: String(t.pr.number) }} />}
-                                    {t.pr.canMerge && <ActButton action={mergePr} label="Merge" fields={{ repo: t.pr.repo, number: String(t.pr.number) }} confirm={`Merge #${t.pr.number} into main in ${t.pr.repo}? Merging deploys where the repo deploys on merge.`} />}
+                                    {t.pr.canMerge && <ActButton action={mergePr} label="Merge" fields={{ repo: t.pr.repo, number: String(t.pr.number), sha: t.pr.sha }} confirm={`Merge #${t.pr.number} into main in ${t.pr.repo}? Merging deploys where the repo deploys on merge.`} />}
                                 </div>
                             )}
                             {t.incidentRepo && <Ask action={incidentHelp} label="Ask Claude why it is down" note="One Claude call" fields={{ repo: t.incidentRepo }} />}

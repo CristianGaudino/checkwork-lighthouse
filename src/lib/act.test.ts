@@ -1,10 +1,12 @@
 import { expect, it } from 'vitest';
-import { checkIssue, checkNumber, checkRepo } from './act';
+import { checkIssue, checkNumber, checkRepo, checkSha } from './act';
 
-it('only lets a configured repo and a positive whole PR number through', () => {
+it('only lets a configured repo, a positive whole PR number and a full commit id through', () => {
     expect(checkRepo('vintage')).toBe('vintage');
     expect([checkRepo('someone-else'), checkRepo('../vintage'), checkRepo(null)]).toEqual([null, null, null]);
     expect(checkNumber('12')).toBe(12);
+    expect(checkSha('a'.repeat(40))).toBe('a'.repeat(40));
+    expect([checkSha('abc'), checkSha('A'.repeat(40)), checkSha(`${'a'.repeat(40)}x`), checkSha(null)]).toEqual([null, null, null, null]);
     expect([checkNumber('0'), checkNumber('-3'), checkNumber('1.5'), checkNumber('12; drop'), checkNumber(null)]).toEqual([null, null, null, null, null]);
 });
 
