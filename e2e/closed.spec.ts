@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 // Every page checks the login itself (requireAdmin), so each one is tried
-const PAGES = ['/', '/work', '/activity', '/projects', '/projects/vintage', '/costs', '/usage', '/pc'];
+// The Claude page and its API run Claude on this PC: they must never answer outside `npm run dev`
+const PAGES = ['/', '/work', '/activity', '/projects', '/projects/vintage', '/costs', '/usage', '/pc', '/claude', '/claude/ea020e4c-ce1c-4a0b-a968-dc1a9a88816e', '/api/claude/ea020e4c-ce1c-4a0b-a968-dc1a9a88816e'];
 
 // The whole site is private. The page itself is checked by hand under `next dev` (the only place the Access check is skipped).
 test('every page is closed without an Access login', async ({ page, request }) => {

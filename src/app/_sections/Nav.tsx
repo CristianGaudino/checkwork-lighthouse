@@ -18,6 +18,8 @@ const ICONS = {
     // A receipt
     costs: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></>,
     search: <><circle cx="11" cy="11" r="6" /><path d="M20 20l-4.5-4.5" /></>,
+    // A speech bubble
+    claude: <path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />,
     pc: <><rect x="3" y="4" width="18" height="12" rx="1.5" /><path d="M9 20h6M12 16v4" /></>,
 };
 
@@ -29,6 +31,7 @@ const PAGES = [
     { href: '/projects', label: 'Projects', icon: 'projects', tab: true },
     { href: '/costs', label: 'Costs', icon: 'costs' },
     { href: '/usage', label: 'Usage', icon: 'usage' },
+    { href: '/claude', label: 'Claude', icon: 'claude', local: true },
     { href: '/pc', label: 'This PC', icon: 'pc', local: true },
 ] as const;
 

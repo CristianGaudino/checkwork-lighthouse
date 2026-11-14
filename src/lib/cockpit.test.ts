@@ -36,7 +36,7 @@ it('counts what needs you, keyed so a change notifies once', () => {
     const got = beats(tasks, [s, { ...s, id: 'w', state: 'working' }]);
     expect(got.map(b => b.kind)).toEqual(['down', 'pr', 'main', 'claude']);
     expect(got[1]).toMatchObject({ key: 'A Merge #3 x abc', title: 'Ready to merge: #3 x' });
-    expect(got[3]).toMatchObject({ key: 'claude s question z', body: 'Go?', href: 'vscode://anthropic.claude-code/open?session=s' });
+    expect(got[3]).toMatchObject({ key: 'claude s question z', body: 'Go?', href: '/claude/s' });
 });
 
 it('lists every place a project lives, and matches typed words in any order', () => {
