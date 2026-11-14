@@ -125,3 +125,13 @@ export async function readDevServers(root: string, repos: string[]): Promise<{ r
         return [];
     }
 }
+
+/** The repos next to this one, by folder name: just the ones with a .git, without asking git anything. null outside `next dev`. */
+export async function listRepos(): Promise<string[] | null> {
+    if (process.env.NODE_ENV !== 'development') return null;
+    const [{ readdir, stat }, path] = await Promise.all([import('node:fs/promises'), import('node:path')]);
+    const root = path.dirname(process.cwd());
+    const names = await readdir(root).catch(() => [] as string[]);
+    const found = await Promise.all(names.map(async n => ((await stat(path.join(root, n, '.git')).catch(() => null)) ? n : null)));
+    return found.filter((n): n is string => n !== null).sort((a, b) => a.localeCompare(b));
+}

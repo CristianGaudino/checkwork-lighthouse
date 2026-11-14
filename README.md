@@ -18,7 +18,7 @@ cp .env.example .env.local       # then fill in the tokens
 npm run dev                      # http://localhost:3000
 ```
 
-The Access check is skipped under `npm run dev` only. Locally you also get This PC (git state, dev servers running, Claude sessions and today's Claude use), Claude on the Overview, Fix with Claude on tasks, and VS Code links in the palette (Ctrl+K).
+The Access check is skipped under `npm run dev` only. Locally you also get the Claude page (every Claude Code session on this PC: read its whole history, reply, answer its questions and permission requests, start new ones, all without VS Code; it runs on your Claude Code login, never an API key), This PC (git state, dev servers running, today's Claude use), Claude on the Overview, Fix with Claude on tasks, and VS Code links in the palette (Ctrl+K).
 
 ## Checks
 
