@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/access';
-import { askHref } from '@/lib/claude';
+import { askHref } from '@/lib/vscode';
 import { loadToday } from '../_data';
 import { Sites } from '../_sections/Sites';
 import { link, n, PageTitle, Problem } from '../_sections/ui';

@@ -38,5 +38,6 @@ export function alertTask(p: Project, a: Alerts | null | undefined): Task | null
         project: p.name, level: 1, action: `Fix ${n === 1 ? 'a security alert' : `${n} security alerts`} in`, title: p.repo,
         detail: `High or critical, in ${pkgs.slice(0, 3).join(', ')}${pkgs.length > 3 ? ` and ${pkgs.length - 3} more` : ''}`,
         href: `https://github.com/${OWNER}/${p.repo}/security/dependabot`,
+        fix: `Fix the high and critical Dependabot alerts in ${p.repo} (${pkgs.join(', ')}): update the packages on a new branch, run the checks and open a PR.`,
     };
 }

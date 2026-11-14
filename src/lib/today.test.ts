@@ -5,7 +5,7 @@ import { ago, buildBoard, lightOf, mainTask, span } from './today';
 const NOW = Date.parse('2026-11-13T12:00:00Z');
 const p = (name: string) => ({ name, repo: name, site: `${name}.ie`, project: 1 });
 const pr = (over: Partial<PullRequest> = {}): PullRequest => ({ number: 1, title: 't', url: 'u', draft: false, updatedAt: '2026-11-13T11:00:00Z', author: 'a', sha: 'head', review: 'none', checks: 'passing', ...over });
-const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, checksPrs: true, deploysWorker: true, isPrivate: true, worker: null, versions: {}, main: { sha: null, head: null, merges: [], checks: 'none' } });
+const repo = (prs: PullRequest[], unreleased = 0): RepoStatus => ({ prs, release: { tag: 'v1.0.0', date: '2026-11-10T12:00:00Z', unreleased }, releasesDeploy: true, checksPrs: true, deploysWorker: true, deployWorkflow: null, isPrivate: true, worker: null, versions: {}, main: { sha: null, head: null, merges: [], checks: 'none' } });
 
 it('queues the worst first, keeps config order on ties, and lights each project', () => {
     const { tasks, projects } = buildBoard(

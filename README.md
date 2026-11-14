@@ -18,7 +18,7 @@ cp .env.example .env.local       # then fill in the tokens
 npm run dev                      # http://localhost:3000
 ```
 
-The Access check is skipped under `npm run dev` only.
+The Access check is skipped under `npm run dev` only. Locally you also get This PC (git state, dev servers running, Claude sessions and today's Claude use), Claude on the Overview, Fix with Claude on tasks, and VS Code links in the palette (Ctrl+K).
 
 ## Checks
 
@@ -45,11 +45,12 @@ On the Worker (Cloudflare dashboard, Workers & Pages, lighthouse, Settings, Vari
 | `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Issues, Pull requests, Actions, Deployments, Dependabot alerts and Metadata, plus the account permission Plan (Actions minutes). Deployments tells when a site on Vercel last deployed; public repos work without it. Dependabot alerts gives the security alerts. |
 | `UPTIMEROBOT_API_KEY` | UptimeRobot's read-only API key. |
 | `GITHUB_PROJECTS_TOKEN` | Classic token with only `read:project`, for the board: fine-grained tokens can't read projects owned by a personal account. |
-| `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read, Workers Scripts: Read) for traffic, Worker errors and which sites run the latest main. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
+| `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read, Workers Scripts: Read, Billing: Read) for traffic, Worker errors, which sites run the latest main, and the plan's cost. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
 | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account the sites run in. |
 | `NEON_API_KEY` | Neon API key, for compute and storage use. |
-| `GITHUB_WRITE_TOKEN` | Optional. A second fine-grained token, All repositories: Pull requests, Contents and Issues **Read and write**, for the Merge, Approve and New issue buttons. Kept apart so the token behind every page load stays read-only. |
+| `GITHUB_WRITE_TOKEN` | Optional. A second fine-grained token, All repositories: Pull requests, Contents, Issues and Actions **Read and write**, for the Merge, Approve, New issue, Re-run failed jobs and Run deploy buttons. Kept apart so the token behind every page load stays read-only. |
 | `ANTHROPIC_API_KEY` | For the morning brief and the incident helper. Spent only when their buttons are pressed. |
+| `ANTHROPIC_ADMIN_KEY` | Optional. An Admin API key from the Claude Console, read for this month's Claude API spend on the Costs page. |
 | `ACCESS_TEAM_DOMAIN` | Your Access team domain, such as `plain-tree-3979.cloudflareaccess.com`. |
 | `ACCESS_AUD` | The audience tag of the Access application covering the whole site. |
 

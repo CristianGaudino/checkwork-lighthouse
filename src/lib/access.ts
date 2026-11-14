@@ -46,11 +46,8 @@ async function teamKeys(team: string): Promise<Jwk[]> {
     return keys;
 }
 
-/**
- * Call first in every admin page and action. A signed-in owner gets their email; anyone else gets a 404, so the page looks like it
- * is not there. Closed when ACCESS_TEAM_DOMAIN or ACCESS_AUD is not set. Only `next dev` skips the check (NODE_ENV is never 'development' in a build).
- */
-export async function requireAdmin(): Promise<string> {
+/** The signed-in owner's email, or null. For the layout, which can't answer 404 itself: it loads the owner's data only when this says yes. */
+export async function adminEmail(): Promise<string | null> {
     if (process.env.NODE_ENV === 'development') return 'dev@localhost';
     const team = process.env.ACCESS_TEAM_DOMAIN;
     const aud = process.env.ACCESS_AUD;
@@ -59,11 +56,18 @@ export async function requireAdmin(): Promise<string> {
     else if (!token) console.warn('Admin closed: no Cf-Access-Jwt-Assertion header on the request');
     else {
         try {
-            const email = await verifyAccessJwt(token, await teamKeys(team), { iss: `https://${team}`, aud });
-            if (email) return email;
+            return await verifyAccessJwt(token, await teamKeys(team), { iss: `https://${team}`, aud }) || null;
         } catch (error) {
             console.error('Could not check Access token', error);
         }
     }
-    notFound();
+    return null;
+}
+
+/**
+ * Call first in every admin page and action. A signed-in owner gets their email; anyone else gets a 404, so the page looks like it
+ * is not there. Closed when ACCESS_TEAM_DOMAIN or ACCESS_AUD is not set. Only `next dev` skips the check (NODE_ENV is never 'development' in a build).
+ */
+export async function requireAdmin(): Promise<string> {
+    return (await adminEmail()) ?? notFound();
 }
