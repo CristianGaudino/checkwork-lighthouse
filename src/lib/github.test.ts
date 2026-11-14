@@ -33,3 +33,15 @@ it('reads the Worker name from wrangler.jsonc, not a binding name', () => {
     expect(workerName('{\n\t// comment with "name": "nope"\n\t"$schema": "x",\n\t"name": "how-many",\n\t"main": "w.js",\n\t"send_email": [{ "name": "EMAIL" }]\n}')).toBe('how-many');
     expect(workerName(null)).toBeNull();
 });
+
+it('reads when main last moved and which of its commits are merges', () => {
+    const c = (committedDate: string, messageHeadline: string) => ({ committedDate, messageHeadline });
+    const repo = parseRepo({ pullRequests: { nodes: [] }, refs: { nodes: [] }, main: { history: { nodes: [
+        c('2026-11-13T21:00:00Z', 'Merge pull request #28 from owner/feat/x'),
+        c('2026-11-13T20:00:00Z', "Merge branch 'main' into feat/x"), // the branch catching up: not a merged PR
+        c('2026-11-13T19:00:00Z', 'Fix a thing'),
+        c('2026-11-12T10:00:00Z', 'Merge pull request #27 from owner/feat/y'),
+    ] } } });
+    expect(repo?.main).toEqual({ head: '2026-11-13T21:00:00Z', merges: ['2026-11-13T21:00:00Z', '2026-11-12T10:00:00Z'] });
+    expect(parseRepo({ pullRequests: { nodes: [] }, refs: { nodes: [] } })?.main).toEqual({ head: null, merges: [] });
+});

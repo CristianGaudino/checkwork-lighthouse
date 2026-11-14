@@ -7,8 +7,9 @@ import type { Uptime } from './uptime';
  * `incidentRepo`: set on a site-down task, so the page can offer the incident helper for that repo.
  * `pr`: set on a PR task, so the page can offer Approve (when someone else opened it) and Merge (only when its checks
  * aren't failing and nobody asked for changes, so a PR sent back is never one tap from main).
+ * `deploy`: the repo whose site is behind main, so this PC can offer to deploy it (docs/deploy-from-pc.md).
  */
-export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; pr?: { repo: string; number: number; mine: boolean; canMerge: boolean } };
+export type Task = { project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; deploy?: string; pr?: { repo: string; number: number; mine: boolean; canMerge: boolean } };
 export type Light = 'bad' | 'warn' | 'ok';
 export type ProjectState = Project & { light: Light; repoStatus: RepoStatus | undefined; uptime: Uptime | null | undefined };
 

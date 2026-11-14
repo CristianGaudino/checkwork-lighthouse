@@ -6,7 +6,7 @@ import { fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
 import { briefPrompt, fetchIncidentFacts, fetchMerged, incidentPrompt } from '@/lib/briefing';
 import { span } from '@/lib/today';
 import { forgetAll, memo, MINUTE } from '@/lib/memo';
-import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { PROJECTS } from '../../lighthouse.config';
 import { loadAnalytics, loadRepos, loadToday, loadUptime } from './_data';
 
@@ -53,9 +53,9 @@ export async function incidentHelp(_prev: AskResult, form: FormData): Promise<As
     }), k.claude);
 }
 
-/** The page's Refresh button: forget every remembered answer, then load the page fresh. */
+/** The Refresh button: forget every remembered answer, then load whichever page it was pressed on fresh. */
 export async function refresh() {
     await requireAdmin();
     forgetAll();
-    redirect('/');
+    revalidatePath('/', 'layout');
 }

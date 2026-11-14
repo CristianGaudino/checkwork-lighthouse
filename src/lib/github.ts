@@ -24,6 +24,7 @@ const Repo = z.object({
     pkg: z.object({ text: z.string().nullable() }).nullable().optional(), // null when the repo has no package.json at its root
     releaseWorkflow: z.object({ id: z.string() }).nullable().optional(),
     wrangler: z.object({ text: z.string().nullable() }).nullable().optional(),
+    main: z.object({ history: z.object({ nodes: z.array(z.object({ committedDate: z.string(), messageHeadline: z.string() })) }) }).nullable().optional(),
 }).nullable();
 
 /** The packages the version table compares, by their label. */
@@ -48,8 +49,14 @@ export type PullRequest = {
     review: 'approved' | 'changes' | 'waiting' | 'none';
     checks: 'passing' | 'failing' | 'running' | 'none';
 };
-/** `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site. */
-export type RepoStatus = { prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; isPrivate: boolean; worker: string | null; versions: Record<string, string> } | null;
+/**
+ * `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site.
+ * `main`: when main's newest commit and its recent merges landed, newest first, to tell what the live Worker is missing.
+ */
+export type RepoStatus = {
+    prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; isPrivate: boolean;
+    worker: string | null; versions: Record<string, string>; main: { head: string | null; merges: string[] };
+} | null;
 
 // Rollup states: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED
 const CHECKS: Record<string, PullRequest['checks']> = { SUCCESS: 'passing', FAILURE: 'failing', ERROR: 'failing', PENDING: 'running', EXPECTED: 'running' };
@@ -66,7 +73,8 @@ const FIELDS = `
   }
   pkg: object(expression: "HEAD:package.json") { ... on Blob { text } }
   releaseWorkflow: object(expression: "HEAD:.github/workflows/release.yml") { id }
-  wrangler: object(expression: "HEAD:wrangler.jsonc") { ... on Blob { text } }`;
+  wrangler: object(expression: "HEAD:wrangler.jsonc") { ... on Blob { text } }
+  main: object(expression: "main") { ... on Commit { history(first: 30) { nodes { committedDate messageHeadline } } } }`;
 
 /** One GraphQL query covers every repo (aliases r0, r1...), so the page costs one GitHub request however many projects there are. */
 export const buildQuery = (projects: Project[]) =>
@@ -95,6 +103,11 @@ export function parseRepo(raw: unknown): RepoStatus {
         isPrivate: repo.isPrivate ?? true,
         worker: workerName(repo.wrangler?.text),
         versions: readVersions(repo.pkg?.text),
+        main: {
+            head: repo.main?.history.nodes[0]?.committedDate ?? null,
+            // Only GitHub's own merge commits: a branch that merged main into itself also has two parents
+            merges: repo.main?.history.nodes.filter(c => c.messageHeadline.startsWith('Merge pull request')).map(c => c.committedDate) ?? [],
+        },
     };
 }
 
