@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import type { Beat, BeatKind } from '@/lib/pulse';
 import { freshKeys } from '@/lib/seen';
 
@@ -53,7 +53,6 @@ const canNotify = () => typeof window !== 'undefined' && 'Notification' in windo
 
 export function Live({ beats }: { beats: Beat[] }) {
     const router = useRouter();
-    const path = usePathname();
 
     useEffect(() => {
         let last = Date.now();
@@ -70,11 +69,20 @@ export function Live({ beats }: { beats: Beat[] }) {
 
     const count = beats.length;
     useEffect(() => {
-        const base = document.title.replace(/^\(\d+\) /, '');
-        document.title = count ? `(${count}) ${base}` : base;
+        // Next writes the page's <title> itself, after this runs and on every navigation, so the count goes back on
+        // whenever the title changes; setting it fires the observer once more, finds it right, and stops
+        const apply = () => {
+            const base = document.title.replace(/^\(\d+\) /, '');
+            const want = count ? `(${count}) ${base}` : base;
+            if (document.title !== want) document.title = want;
+        };
+        apply();
+        const watch = new MutationObserver(apply);
+        watch.observe(document.head, { subtree: true, childList: true, characterData: true });
         const nav = navigator as Navigator & { setAppBadge?: (n: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
         (count ? nav.setAppBadge?.(count) : nav.clearAppBadge?.())?.catch(() => {});
-    }, [count, path]);
+        return () => watch.disconnect();
+    }, [count]);
 
     useEffect(() => {
         const { fresh, store, first } = freshKeys(beats.map(b => b.key), read(SEEN));

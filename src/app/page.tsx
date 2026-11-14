@@ -25,7 +25,10 @@ export default async function Overview() {
     const monitored = t.sites.filter(s => s.p.uptime);
     const up = monitored.filter(s => s.p.uptime?.state === 'up').length;
     const behind = t.sites.filter(s => s.live?.state === 'behind').length;
-    const heading = t.tasks.length ? `${n(t.tasks.length, 'thing needs', 'things need')} you` : t.problem ? 'Lighthouse' : 'Nothing needs you';
+    // The same count as the tab title (src/lib/pulse.ts): tasks, plus Claude sessions that need you on this PC
+    const claude = sessions?.filter(s => needsYou(s)) ?? [];
+    const total = t.tasks.length + claude.length;
+    const heading = total ? `${n(total, 'thing needs', 'things need')} you` : t.problem ? 'Lighthouse' : 'Nothing needs you';
     const sub = [
         monitored.length > 0 && `${up} of ${monitored.length} sites up`,
         behind > 0 && `${behind} not running main`,
@@ -44,7 +47,7 @@ export default async function Overview() {
                 )}
 
                 {/* Local only: Claude Code sessions live on this PC */}
-                {sessions && <ClaudeSessions title="Claude" sessions={sessions.filter(s => needsYou(s))} more="/pc#claude" />}
+                {sessions && <ClaudeSessions title="Claude" sessions={claude} more="/pc#claude" />}
 
                 <Section title="Sites" aside={<Link className={link} href="/usage">Usage</Link>}>
                     <Sites rows={t.sites} analytics={t.analytics.data} known={!t.problem} />
