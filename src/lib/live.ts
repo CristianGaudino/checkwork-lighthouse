@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { RepoStatus } from './github';
+import { OWNER } from '../../lighthouse.config';
+import { githubGraphql, type RepoStatus } from './github';
 
 /**
  * What each site's Worker is running compared with main: from the time of the Worker's latest Cloudflare deployment,
@@ -50,4 +51,28 @@ export async function fetchLive(token: string, account: string, workers: string[
         return latest ? [name, latest] as const : null;
     }));
     return new Map(entries.filter(e => e !== null));
+}
+
+const Deployed = z.record(z.string(), z.object({
+    deployments: z.object({ nodes: z.array(z.object({ createdAt: z.string(), latestStatus: z.object({ state: z.string() }).nullable() })) }),
+}).nullable());
+
+/** The newest production deploy that succeeded: a failed deploy leaves the one before it live. */
+export const lastDeploy = (nodes: { createdAt: string; latestStatus: { state: string } | null }[]) =>
+    nodes.find(d => d.latestStatus?.state === 'SUCCESS')?.createdAt;
+
+/**
+ * When each repo's site was last deployed, by GitHub's record: Vercel's GitHub app writes one per deploy. For sites
+ * without a Worker only, since a Worker deployed from this PC is never recorded. Asked apart from fetchRepos because
+ * a token that can't read a private repo's deployments makes GitHub drop that whole repo; here it costs only its date.
+ */
+export async function fetchDeployed(token: string, repos: string[]): Promise<Map<string, string>> {
+    if (!repos.length) return new Map();
+    const data = await githubGraphql(token, `{ ${repos.map((r, i) => `d${i}: repository(owner: ${JSON.stringify(OWNER)}, name: ${JSON.stringify(r)}) {
+    deployments(environments: ["Production"], first: 5, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { createdAt latestStatus { state } } } }`).join('\n')} }`);
+    const found = Deployed.parse(data ?? {});
+    return new Map(repos.flatMap((r, i) => {
+        const at = lastDeploy(found[`d${i}`]?.deployments.nodes ?? []);
+        return at ? [[r, at] as const] : [];
+    }));
 }

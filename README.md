@@ -42,7 +42,7 @@ On the Worker (Cloudflare dashboard, Workers & Pages, lighthouse, Settings, Vari
 
 | Secret | What for |
 |---|---|
-| `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Issues, Pull requests, Actions and Metadata, plus the account permission Plan (Actions minutes). |
+| `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Issues, Pull requests, Actions, Deployments and Metadata, plus the account permission Plan (Actions minutes). Deployments tells when a site on Vercel last deployed; public repos work without it. |
 | `UPTIMEROBOT_API_KEY` | UptimeRobot's read-only API key. |
 | `GITHUB_PROJECTS_TOKEN` | Classic token with only `read:project`, for the board: fine-grained tokens can't read projects owned by a personal account. |
 | `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read, Workers Scripts: Read) for traffic, Worker errors and which sites run the latest main. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |

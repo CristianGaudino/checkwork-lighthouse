@@ -14,5 +14,6 @@ export const PROJECTS: Project[] = [
     { name: 'How Many?', repo: 'vintage', site: 'www.checkhowmany.com', project: 3 },
     { name: 'How Much?', repo: 'how-much', site: 'www.checkhowmuch.com', project: 4 },
     { name: 'Blacktail Archive', repo: 'blacktail', site: 'www.blacktailarchive.cgaudino.com', project: 5 },
+    { name: 'Portfolio', repo: 'portfolio', site: 'www.cgaudino.com', project: 2 },
     { name: 'Checkwork Lighthouse', repo: 'checkwork-lighthouse', site: 'www.lighthouse.checkwork.ie', project: 9 },
 ];
