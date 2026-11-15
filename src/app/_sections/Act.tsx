@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import type { ActResult } from '@/lib/act';
-import { ISSUE_TYPES } from '@/lib/act';
+import { BUMPS, ISSUE_TYPES } from '@/lib/act';
 import { Dots } from './ui';
 
 type Action = (prev: ActResult, form: FormData) => Promise<ActResult>;
@@ -21,6 +21,25 @@ export function ActButton({ action, label, fields, confirm }: { action: Action; 
         <form action={run} onSubmit={e => { if (confirm && !window.confirm(confirm)) e.preventDefault(); }} className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {Object.entries(fields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
             {!state.ok && <button type="submit" disabled={pending} className={button}>{pending ? <>Working<Dots /></> : label}</button>}
+            <span aria-live="polite"><Result state={state} /></span>
+        </form>
+    );
+}
+
+/** Cut a release: pick how big, then it asks first, since a release deploys. Patch first, the usual size. */
+export function ReleaseButton({ action, repo }: { action: Action; repo: string }) {
+    const [state, run, pending] = useActionState(action, {});
+    return (
+        <form action={run} onSubmit={e => { if (!window.confirm(`Cut a ${new FormData(e.currentTarget).get('bump')} release of ${repo} from main? It tags main and deploys that tag.`)) e.preventDefault(); }} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <input type="hidden" name="repo" value={repo} />
+            {!state.ok && (
+                <span className="flex items-center gap-2">
+                    <select name="bump" aria-label="Release size" defaultValue="patch" className="rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-fg">
+                        {BUMPS.map(b => <option key={b} value={b}>{b[0].toUpperCase() + b.slice(1)}</option>)}
+                    </select>
+                    <button type="submit" disabled={pending} className={button}>{pending ? <>Working<Dots /></> : 'Release'}</button>
+                </span>
+            )}
             <span aria-live="polite"><Result state={state} /></span>
         </form>
     );

@@ -11,12 +11,17 @@ import type { Uptime } from './uptime';
  * `deploy`: the repo whose site is behind main, so this PC can offer to deploy it (docs/deploy-from-pc.md).
  * `fix`: a prompt for Claude Code, offered locally as Fix with Claude. `rerun`: a commit whose failed jobs can run again.
  * `dispatch`: the repo's deploy workflow, to run from here. `batch`: Dependabot PRs whose checks pass, to merge in one go.
+ * `release`: a repo whose Release workflow deploys, to cut a release from here.
  */
 export type Task = {
     project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; deploy?: string;
     pr?: { repo: string; number: number; sha: string; mine: boolean; canMerge: boolean };
     fix?: string; rerun?: { repo: string; sha: string }; dispatch?: { repo: string; workflow: string }; batch?: { repo: string; prs: { number: number; sha: string }[] };
+    release?: { repo: string };
 };
+
+/** What a task is called for snoozing and notifying: its words change when the thing does (a new commit to release), so a new state shows again. */
+export const taskKey = (t: Task) => `${t.project} ${[t.action, t.title].filter(Boolean).join(' ')}`;
 export type Light = 'bad' | 'warn' | 'ok';
 export type ProjectState = Project & { repoStatus: RepoStatus | undefined; uptime: Uptime | null | undefined };
 
@@ -106,7 +111,7 @@ export function buildBoard(projects: Project[], repos: RepoStatus[] | undefined,
             // Only where releases deploy: a repo that deploys every merge has nothing waiting
             if (r.release && n && r.releasesDeploy) {
                 const when = r.release.date ? `, ${ago(r.release.date, now)}` : '';
-                mine.push({ project: p.name, level: 2, action: `Release ${plural(n, 'commit')}`, detail: `On main since ${r.release.tag}${when}`, href: `https://github.com/${OWNER}/${p.repo}/compare/${r.release.tag}...main` });
+                mine.push({ project: p.name, level: 2, action: `Release ${plural(n, 'commit')}`, detail: `On main since ${r.release.tag}${when}`, href: `https://github.com/${OWNER}/${p.repo}/compare/${r.release.tag}...main`, release: { repo: p.repo } });
             }
         }
         tasks.push(...mine);

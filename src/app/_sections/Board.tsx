@@ -1,7 +1,9 @@
 import { automationGaps, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
 import { askHref } from '@/lib/vscode';
+import { listRepos } from '@/lib/local';
 import { memo, MINUTE } from '@/lib/memo';
 import { PROJECTS } from '../../../lighthouse.config';
+import { StartClaude } from './NewSession';
 import { ProjectIcon } from './ProjectIcon';
 import { ext, link, Problem, Section, Setup } from './ui';
 
@@ -24,6 +26,9 @@ export async function Board({ local, project }: { local: boolean; project?: stri
         console.error('Could not load the boards', error);
         return <Section title="Board"><Problem>GitHub did not answer, so the board is missing. Reload in a minute.</Problem></Section>;
     }
+    // On this PC, Ask Claude starts a session on the Claude page in the card's repo; otherwise VS Code opens it
+    const here = local ? await listRepos() : null;
+    const repoOf = (name: string) => PROJECTS.find(p => p.name === name)?.repo;
     const cards = (c: (typeof COLUMNS)[number]) => board.columns[c].filter(card => !project || card.project === project);
     const backlog = board.backlog.filter(b => !project || b.project === project);
     return (
@@ -49,7 +54,12 @@ export async function Board({ local, project }: { local: boolean; project?: stri
                                             <span className="mt-0.5 flex flex-wrap gap-x-3 text-fg-muted">
                                                 {!project && <span className="flex items-center gap-1.5"><ProjectIcon project={card.project} className="size-4 text-[8px]" />{card.project}</span>}
                                                 {card.kind && <span>{card.kind}</span>}
-                                                {local && <a className={link} href={askHref(`Work on "${card.title}" in ${card.project}: ${card.href}`)} title="Opens Claude Code in VS Code with this as the prompt">Ask Claude</a>}
+                                                {local && (() => {
+                                                    const repo = repoOf(card.project), text = `Work on "${card.title}" in ${card.project}: ${card.href}`;
+                                                    return repo && here?.includes(repo)
+                                                        ? <StartClaude repo={repo} text={text} label="Ask Claude" className={link} />
+                                                        : <a className={link} href={askHref(text)} title="Opens Claude Code in VS Code with this as the prompt">Ask Claude</a>;
+                                                })()}
                                             </span>
                                         </li>
                                     ))}
