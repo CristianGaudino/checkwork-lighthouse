@@ -13,14 +13,19 @@ it('turns transcript lines into the conversation, leaving out what the harness a
         '{"cut off',
         msg(1, 'user', 'Fix the hero <system-reminder>noise</system-reminder>'),
         msg(2, 'user', 'reminder only', { isMeta: true }),
-        msg(3, 'user', '<command-name>/clear</command-name>'),
+        msg(3, 'user', '<command-name>/compact</command-name>\n  <command-message>compact</command-message>\n  <command-args>keep the plan</command-args>'),
+        j({ type: 'system', uuid: 'u30', timestamp: '2026-11-14T10:00:03Z', content: '<local-command-stdout>\u001b[1mCompacted\u001b[22m</local-command-stdout>' }),
+        j({ type: 'system', uuid: 'u31', timestamp: '2026-11-14T10:00:03Z', content: '<local-command-stdout></local-command-stdout>' }),
         msg(4, 'assistant', [{ type: 'thinking', thinking: 'Hmm' }, { type: 'text', text: 'On it' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npm test', description: 'Run tests' } }]),
         msg(5, 'user', [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: 'ok' }, { type: 'image' }], is_error: false }]),
         msg(6, 'assistant', [{ type: 'text', text: 'sub' }], { isSidechain: true }),
         j({ type: 'api-request-blob', body: '"type":"assistant"' }),
+        msg(7, 'user', [{ type: 'image' }, { type: 'image' }, { type: 'text', text: 'Like this' }]),
     ];
     expect(parseLines(lines).map(e => [e.kind, 'text' in e ? e.text : 'summary' in e ? e.summary : ''])).toEqual([
-        ['you', 'Fix the hero'], ['thinking', 'Hmm'], ['claude', 'On it'], ['tool', 'Run tests'], ['result', 'ok\n[image]'],
+        ['you', 'Fix the hero'], ['you', '/compact keep the plan'], ['claude', 'Compacted'],
+        ['thinking', 'Hmm'], ['claude', 'On it'], ['tool', 'Run tests'], ['result', 'ok\n[image]'],
+        ['you', 'Like this\n[2 pictures]'],
     ]);
     expect(toolSummary('Read', { file_path: 'C:\\x.ts' })).toBe('C:\\x.ts');
     expect(toolSummary('AskUserQuestion', { questions: [{ question: 'A?' }, { question: 'B?' }] })).toBe('A? / B?');
@@ -80,4 +85,33 @@ it('gives a session Git Bash from the Git on PATH, and never an API key', async 
     expect(env).toMatchObject({ HOME: 'h', CLAUDE_CODE_GIT_BASH_PATH: bash });
     expect('ANTHROPIC_API_KEY' in env || 'ANTHROPIC_AUTH_TOKEN' in env).toBe(false);
     expect(sessionEnv({ CLAUDE_CODE_GIT_BASH_PATH: w`D:\bash.exe` }, has, true).CLAUDE_CODE_GIT_BASH_PATH).toBe(w`D:\bash.exe`);
+});
+
+it('takes only pictures Claude can read, and settings it knows, from the page', async () => {
+    const { content, picturesOf, prefsOf } = await import('./runner');
+    const png = { type: 'image/png', data: 'iVBORw0KGgo=' };
+    expect(picturesOf(undefined)).toEqual([]);
+    expect(picturesOf([png])).toEqual([png]);
+    expect(picturesOf([{ ...png, type: 'image/svg+xml' }])).toBeNull();
+    expect(picturesOf([{ ...png, data: 'not base64!' }])).toBeNull();
+    expect(picturesOf([{ ...png, data: 'A'.repeat(8_000_000) }])).toBeNull();
+    expect(picturesOf(Array(5).fill(png))).toBeNull();
+    expect(content('hi')).toBe('hi');
+    expect(content('', [png as never])).toEqual([{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: png.data } }]);
+    expect(prefsOf({ model: 'opus', effort: 'high', mode: 'plan' })).toEqual({ model: 'opus', effort: 'high', mode: 'plan' });
+    expect(prefsOf({ model: 'default', effort: null })).toEqual({ model: undefined, effort: null });
+    expect(prefsOf({ mode: 'bypassPermissions' })).toBeNull();
+    expect(prefsOf({ effort: 'huge' })).toBeNull();
+    expect(prefsOf({ model: 'opus; rm -rf' })).toBeNull();
+    expect(prefsOf({})).toBeNull();
+});
+
+it('offers the closest commands first, and reads a table with or without a header', async () => {
+    const { commandsFor } = await import('../app/_sections/Composer');
+    const { tableOf } = await import('../app/_sections/Markdown');
+    const c = (name: string) => ({ name, description: '', hint: '' });
+    expect(commandsFor('comp', [c('competitor-branding'), c('autocompact'), c('compact'), c('review')]).map(x => x.name)).toEqual(['compact', 'competitor-branding', 'autocompact']);
+    expect(commandsFor('', [c('b'), c('a')], 1)).toHaveLength(1);
+    expect(tableOf(['| A | B |', '|---|:-:|', '| 1 | 2 |'])).toEqual({ head: ['A', 'B'], body: [['1', '2']] });
+    expect(tableOf(['| 1 | 2 |', '| | |'])).toEqual({ head: null, body: [['1', '2'], ['', '']] });
 });

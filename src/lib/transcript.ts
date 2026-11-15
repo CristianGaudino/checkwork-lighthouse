@@ -17,7 +17,22 @@ const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0
 const own = (text: string) => text.replace(/<(system-reminder|ide_selection|ide_opened_file|ide_diagnostics)>[\s\S]*?<\/\1>/g, '').trim();
 
 type Block = { type?: string; text?: string; thinking?: string; id?: string; name?: string; input?: Record<string, unknown>; tool_use_id?: string; content?: unknown; is_error?: boolean };
-type Line = { type?: string; uuid?: string; timestamp?: string; isMeta?: boolean; isSidechain?: boolean; isCompactSummary?: boolean; message?: { content?: unknown } };
+type Line = { type?: string; uuid?: string; timestamp?: string; isMeta?: boolean; isSidechain?: boolean; isCompactSummary?: boolean; content?: unknown; message?: { content?: unknown } };
+
+// Colour codes some commands print for a terminal
+const ANSI = /\u001b\[[0-9;]*m/g;
+const commandOutput = (text: string) => text.match(/^<local-command-stdout>([\s\S]*)<\/local-command-stdout>$/)?.[1].replace(ANSI, '').trim() ?? '';
+
+/**
+ * What you wrote, as you'd recognise it: a slash command as you typed it (Claude Code stores it as tags), without
+ * the reminders the harness adds. Interrupt markers and a command's empty output are the harness talking: ''.
+ */
+function said(text: string): string {
+    const command = text.match(/<command-name>([^<]*)<\/command-name>/)?.[1];
+    if (command) return [command.startsWith('/') ? command : `/${command}`, text.match(/<command-args>([^<]*)<\/command-args>/)?.[1].trim()].filter(Boolean).join(' ');
+    const mine = own(text);
+    return /^<(command-|local-command-)/.test(mine) ? '' : mine;
+}
 
 /** One line for a tool step, like the command it ran or the file it read. */
 export function toolSummary(name: string, input: Record<string, unknown> = {}): string {
@@ -41,20 +56,27 @@ export function parseLines(lines: string[]): Entry[] {
     const out: Entry[] = [];
     for (const raw of lines) {
         // A cheap look before parsing: most bytes are lines this page never shows
-        if (!raw.includes('"type":"user"') && !raw.includes('"type":"assistant"')) continue;
+        if (!raw.includes('"type":"user"') && !raw.includes('"type":"assistant"') && !raw.includes('<local-command-stdout>')) continue;
         let line: Line;
         try { line = JSON.parse(raw); } catch { continue; }
-        if ((line.type !== 'user' && line.type !== 'assistant') || line.isSidechain || line.isMeta || line.isCompactSummary || !line.uuid) continue;
-        const at = line.timestamp ?? '', content = line.message?.content;
+        if (line.isSidechain || line.isMeta || line.isCompactSummary || !line.uuid) continue;
+        const at = line.timestamp ?? '', content = line.message?.content ?? line.content;
+        // What a command like /context printed: Claude Code's answer, so it reads as one
+        if (line.type === 'system') {
+            const said = typeof content === 'string' ? commandOutput(content) : '';
+            if (said) out.push({ id: `${line.uuid}:0`, at, kind: 'claude', text: clip(said, TEXT_MAX) });
+            continue;
+        }
+        if (line.type !== 'user' && line.type !== 'assistant') continue;
         const blocks: Block[] = typeof content === 'string' ? [{ type: 'text', text: content }] : Array.isArray(content) ? content : [];
+        // Your message with its pictures is one message, however many blocks it takes
+        const pictures = line.type === 'user' ? blocks.filter(b => b.type === 'image').length : 0;
+        const yours = line.type === 'user' ? blocks.flatMap(b => (b.type === 'text' && b.text ? [said(b.text)] : [])).filter(Boolean).join('\n\n') : '';
+        if (yours || pictures) out.push({ id: `${line.uuid}:0`, at, kind: 'you', text: clip([yours, pictures && `[${pictures === 1 ? 'a picture' : `${pictures} pictures`}]`].filter(Boolean).join('\n'), TEXT_MAX) });
         blocks.forEach((b, i) => {
             const id = `${line.uuid}:${i}`;
-            if (b.type === 'text' && b.text) {
-                const text = line.type === 'user' ? own(b.text) : b.text;
-                // Slash-command plumbing and interrupt markers are the harness talking, not you
-                if (text && !(line.type === 'user' && /^<(command-|local-command-)/.test(text))) out.push({ id, at, kind: line.type === 'user' ? 'you' : 'claude', text: clip(text, TEXT_MAX) });
-            } else if (b.type === 'image' && line.type === 'user') {
-                out.push({ id, at, kind: 'you', text: '[image]' });
+            if (b.type === 'text' && b.text && line.type === 'assistant') {
+                out.push({ id, at, kind: 'claude', text: clip(b.text, TEXT_MAX) });
             } else if (b.type === 'thinking' && b.thinking) {
                 out.push({ id, at, kind: 'thinking', text: clip(b.thinking, TEXT_MAX) });
             } else if (b.type === 'tool_use' && b.id && b.name) {
