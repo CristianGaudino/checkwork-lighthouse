@@ -3,13 +3,14 @@
 import { useActionState } from 'react';
 import type { ActResult } from '@/lib/act';
 import { ISSUE_TYPES } from '@/lib/act';
+import { Dots } from './ui';
 
 type Action = (prev: ActResult, form: FormData) => Promise<ActResult>;
 const button = 'rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium transition-colors hover:border-fg-muted disabled:opacity-60';
 
 function Result({ state }: { state: ActResult }) {
-    if (state.error) return <span className="text-sm text-warn">{state.error}</span>;
-    if (state.ok) return <span className="text-sm text-ok">{state.href ? <a href={state.href} target="_blank" rel="noreferrer" className="underline underline-offset-4">{state.ok}</a> : state.ok}</span>;
+    if (state.error) return <span className="animate-rise text-sm text-warn">{state.error}</span>;
+    if (state.ok) return <span className="animate-rise text-sm text-ok">{state.href ? <a href={state.href} target="_blank" rel="noreferrer" className="underline underline-offset-4">{state.ok}</a> : state.ok}</span>;
     return null;
 }
 
@@ -19,7 +20,7 @@ export function ActButton({ action, label, fields, confirm }: { action: Action; 
     return (
         <form action={run} onSubmit={e => { if (confirm && !window.confirm(confirm)) e.preventDefault(); }} className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {Object.entries(fields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
-            {!state.ok && <button type="submit" disabled={pending} className={button}>{pending ? 'Working' : label}</button>}
+            {!state.ok && <button type="submit" disabled={pending} className={button}>{pending ? <>Working<Dots /></> : label}</button>}
             <span aria-live="polite"><Result state={state} /></span>
         </form>
     );
@@ -53,7 +54,7 @@ export function NewIssue({ action, repos, start }: { action: Action; repos: { re
                     <textarea name="body" rows={3} className={field} defaultValue={start?.body} />
                 </label>
                 <div className="flex flex-wrap items-center gap-3">
-                    <button type="submit" disabled={pending} className={button}>{pending ? 'Opening' : 'Open issue'}</button>
+                    <button type="submit" disabled={pending} className={button}>{pending ? <>Opening<Dots /></> : 'Open issue'}</button>
                     <span aria-live="polite"><Result state={state} /></span>
                 </div>
             </form>

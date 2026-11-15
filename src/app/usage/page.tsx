@@ -1,4 +1,5 @@
 import { requireAdmin } from '@/lib/access';
+import { Gate } from '../_sections/Gate';
 import { loadNeon, loadToday } from '../_data';
 import { Analytics, Neon } from '../_sections/Analytics';
 import { Minutes, Versions } from '../_sections/Usage';
@@ -7,7 +8,11 @@ import { PageTitle, Problem } from '../_sections/ui';
 export const metadata = { title: 'Usage' };
 
 /** What the sites and the tools around them use: traffic, Workers, Actions minutes, Neon and package versions. */
-export default async function Usage() {
+export default function Page() {
+    return <Gate><Usage /></Gate>;
+}
+
+async function Usage() {
     await requireAdmin();
     const [t, neon] = await Promise.all([loadToday(), loadNeon()]);
     return (

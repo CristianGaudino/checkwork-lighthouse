@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Gate } from './_sections/Gate';
 import { requireAdmin } from '@/lib/access';
 import { MODEL } from '@/lib/ask';
 import { needsYou, readSessions } from '@/lib/claude';
@@ -19,7 +20,11 @@ export const metadata = { title: 'Overview' };
 const TOP = 5;
 const RECENT = 6;
 
-export default async function Overview() {
+export default function Page() {
+    return <Gate><Overview /></Gate>;
+}
+
+async function Overview() {
     await requireAdmin();
     const [t, activity, sessions] = await Promise.all([loadToday(), loadActivity(), readSessions()]);
     const monitored = t.sites.filter(s => s.p.uptime);
@@ -47,7 +52,7 @@ export default async function Overview() {
                 )}
 
                 {/* Local only: Claude Code sessions live on this PC */}
-                {sessions && <ClaudeSessions title="Claude" sessions={claude} more="/pc#claude" />}
+                {sessions && <ClaudeSessions title="Claude" sessions={claude} more="/claude" />}
 
                 <Section title="Sites" aside={<Link className={link} href="/usage">Usage</Link>}>
                     <Sites rows={t.sites} analytics={t.analytics.data} known={!t.problem} />

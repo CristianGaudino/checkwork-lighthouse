@@ -83,10 +83,11 @@ export async function scanTranscript(lines: Iterable<string> | AsyncIterable<str
 const folderName = (cwd: string) => cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? '?';
 
 // In their own file so the browser's code can build them without this file's node: imports
+import { cache } from 'react';
 export { askHref, resumeHref } from './vscode';
 
-/** null outside `next dev`. Newest first, waiting sessions on top. */
-export async function readSessions(now = Date.now()): Promise<Session[] | null> {
+/** null outside `next dev`. Newest first, waiting sessions on top. Read once per request (cache): the layout and the page both want it. */
+export const readSessions = cache(async (now = Date.now()): Promise<Session[] | null> => {
     if (process.env.NODE_ENV !== 'development') return null;
     const [{ readdir, stat, open }, path, os] = await Promise.all([import('node:fs/promises'), import('node:path'), import('node:os')]);
     const root = path.join(os.homedir(), '.claude', 'projects');
@@ -116,7 +117,7 @@ export async function readSessions(now = Date.now()): Promise<Session[] | null> 
     const order: Record<SessionState, number> = { question: 0, blocked: 1, waiting: 2, working: 3, stopped: 4 };
     // A file can be touched without a new turn, so the last turn decides too
     return sessions.filter(s => s !== null).filter(s => now - Date.parse(s.at) < RECENT_MS).sort((a, b) => order[a.state] - order[b.state] || b.at.localeCompare(a.at));
-}
+});
 
 const FRESH_MS = 12 * 3_600_000;
 const BLOCKED_MS = 5 * 60_000; // a build or a test run often takes a few minutes; a permission prompt waits longer

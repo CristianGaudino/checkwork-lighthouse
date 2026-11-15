@@ -1,4 +1,5 @@
 import { requireAdmin } from '@/lib/access';
+import { Gate } from '../_sections/Gate';
 import { askHref } from '@/lib/vscode';
 import { loadToday } from '../_data';
 import { Sites } from '../_sections/Sites';
@@ -6,7 +7,11 @@ import { link, n, PageTitle, Problem } from '../_sections/ui';
 
 export const metadata = { title: 'Projects' };
 
-export default async function Projects() {
+export default function Page() {
+    return <Gate><Projects /></Gate>;
+}
+
+async function Projects() {
     await requireAdmin();
     const t = await loadToday();
     const local = process.env.NODE_ENV === 'development';
