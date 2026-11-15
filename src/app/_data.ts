@@ -163,6 +163,8 @@ export async function loadActivity(): Promise<{ events?: Event[]; problem?: stri
 }
 
 const refusedBy = (error: unknown) => /: 40[13]$/.test(String(error instanceof Error ? error.message : error));
+// A refusal is setup still to do, which the page already says quietly: a warning, so dev's error badge stays for real failures
+const logFailure = (what: string, error: unknown) => (refusedBy(error) ? console.warn : console.error)(what, error);
 
 /** Claude API spend and Cloudflare's plans, for Costs. A missing key is a quiet note; a refusal says which permission. */
 export async function loadCosts(): Promise<{ claude?: number; claudeNote?: string; plans?: Plan[]; plansNote?: string }> {
@@ -170,13 +172,13 @@ export async function loadCosts(): Promise<{ claude?: number; claudeNote?: strin
     const [claude, cloudflare] = await Promise.all([
         admin
             ? memo('claude cost', 30 * MINUTE, () => fetchClaudeCost(admin)).then(claude => ({ claude }), error => {
-                console.error('Could not load Claude API cost', error);
+                logFailure('Could not load Claude API cost', error);
                 return { claudeNote: refusedBy(error) ? 'Anthropic refused ANTHROPIC_ADMIN_KEY. It must be an Admin API key.' : 'Anthropic did not answer. Reload in a minute.' };
             })
             : { claudeNote: 'Set ANTHROPIC_ADMIN_KEY (an Admin API key from the Claude Console) to see it.' },
         token && account
             ? memo('cloudflare plans', 60 * MINUTE, () => fetchCloudflarePlans(token, account)).then(plans => ({ plans }), error => {
-                console.error('Could not load Cloudflare subscriptions', error);
+                logFailure('Could not load Cloudflare subscriptions', error);
                 return { plansNote: refusedBy(error) ? 'Add Billing: Read to CLOUDFLARE_ANALYTICS_TOKEN to see it.' : 'Cloudflare did not answer. Reload in a minute.' };
             })
             : { plansNote: 'Set CLOUDFLARE_ANALYTICS_TOKEN and CLOUDFLARE_ACCOUNT_ID to see it.' },

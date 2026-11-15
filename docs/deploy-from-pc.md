@@ -10,9 +10,9 @@ For when GitHub Actions can't deploy: usually the shared 2,000 minutes have run 
 
 ## Steps (for Claude)
 
-Run each step through `wsl.exe -d Ubuntu -- bash <script>`, with the script written to the scratchpad. In Git Bash, set `MSYS_NO_PATHCONV=1` so `/mnt/c/...` paths survive.
+Run each step through `wsl.exe -d Ubuntu -- bash <script>`, with the script written to the scratchpad. In Git Bash, set `MSYS_NO_PATHCONV=1` so `/mnt/c/...` paths survive. Start each script with `export PATH=$HOME/.local/node/bin:$PATH`: a script doesn't load `~/.bashrc`, and without it `npx` quietly falls through to Windows' copy.
 
-1. **What to ship.** Fetch in `C:\Git\<repo>` (Windows). A repo with `.github/workflows/release.yml` deploys releases: ship its latest release tag, or ask the owner before cutting a new one. Any other repo ships `origin/main`. Say what production is missing (`git log`) before going on.
+1. **What to ship.** Fetch in `C:\Git\<repo>` (Windows). A repo whose `.github/workflows/release.yml` calls the deploy workflow (`uses: ./.github/workflows/...`) deploys releases: ship its latest release tag, or ask the owner before cutting a new one. Any other repo ships `origin/main`, including one whose `release.yml` only tags (checkwork-demo). Say what production is missing (`git log`) before going on.
 2. **Read the repo's deploy workflow** (`deploy*.yml`) and follow it step by step. Its build-time `env` values are public or placeholders: copy them as they are.
 3. **Clone on the Linux side**, from the Windows copy so no GitHub login is needed: `git clone /mnt/c/Git/<repo> ~/<repo>` and check out the commit. The first time, run `git config --global --add safe.directory /mnt/c/Git/<repo>/.git`. Never build inside `/mnt/c`, and never touch the Windows working tree (other sessions use it).
 4. **Checks before anything touches production:** `npm ci`, then the workflow's tests, lint and migration checks, then `npx opennextjs-cloudflare build`.
