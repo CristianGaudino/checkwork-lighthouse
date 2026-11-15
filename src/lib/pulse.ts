@@ -1,5 +1,4 @@
 import { needsYou, type Session, type SessionState } from './claude';
-import { resumeHref } from './vscode';
 import type { Task } from './today';
 
 /**
@@ -23,7 +22,7 @@ export function beats(tasks: Task[], sessions: Session[] | null): Beat[] {
         }),
         ...(sessions ?? []).filter(s => needsYou(s)).map(s => ({
             key: `claude ${s.id} ${s.state} ${s.at}`, kind: 'claude' as const,
-            title: `${s.repo}: ${SAID[s.state]}`, body: s.questions[0]?.text ?? s.title, href: resumeHref(s.id),
+            title: `${s.repo}: ${SAID[s.state]}`, body: s.questions[0]?.text ?? s.title, href: `/claude/${s.id}`,
         })),
     ];
 }

@@ -21,7 +21,7 @@ export const PAGES: Jump[] = [
  * of repos, under `next dev` only, for the VS Code links.
  */
 export function jumps(sites: Site[], o: { account?: string; neon?: { id: string; name: string }[]; root?: string }): Jump[] {
-    const pages = o.root ? [...PAGES, { label: 'This PC', hint: 'Page', href: '/pc' }] : PAGES;
+    const pages = o.root ? [...PAGES, { label: 'Claude', hint: 'Sessions on this PC', href: '/claude' }, { label: 'This PC', hint: 'Page', href: '/pc' }] : PAGES;
     return [...pages, ...sites.flatMap(({ p, worker }) => {
         const gh = `https://github.com/${OWNER}/${p.repo}`;
         const neon = o.neon?.find(n => [p.repo, p.name].some(x => x.toLowerCase() === n.name.toLowerCase()));

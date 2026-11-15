@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/access';
-import { readSessions, readUsageToday } from '@/lib/claude';
+import { readUsageToday } from '@/lib/claude';
 import { readDevServers, readLocalRepos } from '@/lib/local';
 import { memo, MINUTE } from '@/lib/memo';
 import { OWNER } from '../../../lighthouse.config';
 import { loadToday } from '../_data';
-import { ClaudeSessions, ClaudeToday } from '../_sections/Claude';
+import { ClaudeToday } from '../_sections/Claude';
 import { Git } from '../_sections/Pc';
 import { ProjectIcon } from '../_sections/ProjectIcon';
 import { liveText } from '../_sections/Sites';
@@ -18,8 +18,8 @@ export const metadata = { title: 'This PC' };
 /** Local only (`npm run dev`): what this PC can see and do. On the Worker there is no PC, so no page. */
 export default async function ThisPc() {
     await requireAdmin();
-    const [pc, sessions, t] = await Promise.all([readLocalRepos(), readSessions(), loadToday()]);
-    if (!pc || !sessions) notFound();
+    const [pc, t] = await Promise.all([readLocalRepos(), loadToday()]);
+    if (!pc) notFound();
     const [servers, usage] = await Promise.all([
         // A PowerShell call and a read of today's transcripts: remembered briefly, as each page load would repeat them
         memo('dev servers', MINUTE / 2, () => readDevServers(pc.root, pc.repos.map(r => r.name))),
@@ -61,7 +61,7 @@ export default async function ThisPc() {
                         </ul>
                     ) : <p className="mt-3 text-sm text-fg-muted">{t.deploys.setup ?? 'Every site runs its latest main or release'}</p>}
                 </Section>
-                <ClaudeSessions sessions={sessions} />
+                {/* The sessions themselves are on the Claude page */}
                 {usage && <ClaudeToday usage={usage} />}
                 <Git repos={pc.repos} root={pc.root} />
             </div>
