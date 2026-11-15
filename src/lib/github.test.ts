@@ -55,8 +55,10 @@ it('reads from the workflows whether releases deploy, PRs get checks and Actions
     expect(read([
         wf('ci.yml', 'name: CI\non:\n  pull_request:\n    types: [opened]'),
         wf('deploy-workers.yml', 'jobs:\n  deploy:\n    steps:\n      - run: npx wrangler deploy'),
-        wf('release.yml', 'on:\n  workflow_dispatch:'),
+        wf('release.yml', 'on:\n  workflow_dispatch:\njobs:\n  deploy:\n    uses: ./.github/workflows/deploy-workers.yml'),
     ])).toEqual([true, true, true]);
+    // A release that only tags (checkwork-demo's): every merge deploys there
+    expect(read([wf('release.yml', 'on:\n  workflow_dispatch:\njobs:\n  tag:\n    steps:\n      - run: git tag v1.0.0')])).toEqual([false, false, false]);
     expect(read([wf('ci.yml', 'on: [push, pull_request]')])).toEqual([false, true, false]);
     // A push workflow that only reads the PR event is not a check on PRs
     expect(read([wf('x.yml', 'on:\n  push:\njobs:\n  a:\n    if: github.event.pull_request')])).toEqual([false, false, false]);

@@ -56,7 +56,8 @@ export type PullRequest = {
     checks: 'passing' | 'failing' | 'running' | 'none';
 };
 /**
- * `releasesDeploy`: the repo has a Release workflow, so commits on main wait for a release to reach the site.
+ * `releasesDeploy`: the repo's Release workflow also deploys, so commits on main wait for a release to reach the site. One that
+ * only tags (checkwork-demo's) doesn't count: there every merge deploys.
  * `checksPrs`: a workflow runs on pull requests. `deploysWorker`: a workflow runs `wrangler deploy`; `deployWorkflow` is the
  * file of one that can also be run by hand (workflow_dispatch), for the Run deploy button.
  * `main`: when main's newest commit and its recent merges landed, newest first, to tell what the live Worker is missing,
@@ -110,7 +111,7 @@ export function parseRepo(raw: unknown): RepoStatus {
             checks: CHECKS[pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? ''] ?? 'none',
         })),
         release: tag ? { tag: tag.name, date: tag.target.committedDate ?? tag.target.target?.committedDate ?? null, unreleased: tag.compare?.aheadBy ?? null } : null,
-        releasesDeploy: workflows.some(w => w.name === 'release.yml'),
+        releasesDeploy: workflows.some(w => w.name === 'release.yml' && /uses: \.\/\.github\/workflows\/|wrangler/.test(w.object?.text ?? '')),
         checksPrs: workflows.some(w => /^\s*pull_request\b|^on:.*\bpull_request\b/m.test(w.object?.text ?? '')),
         deploysWorker: workflows.some(w => /wrangler(-action|\s+deploy)/.test(w.object?.text ?? '')),
         deployWorkflow: workflows.find(w => /wrangler(-action|\s+deploy)/.test(w.object?.text ?? '') && /workflow_dispatch/.test(w.object?.text ?? ''))?.name ?? null,

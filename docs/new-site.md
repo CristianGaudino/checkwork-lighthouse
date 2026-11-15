@@ -28,7 +28,7 @@ A workflow that runs on pull requests: copy `.github/workflows/ci.yml` from chec
 
 ## Deploys
 
-**On Cloudflare Workers:** keep `wrangler.jsonc` at the repo root, because Lighthouse reads the Worker name from it. Copy `.github/workflows/deploy-workers.yml` from checkwork. Then set the repo secrets `CLOUDFLARE_API_TOKEN` (Workers deploy) and `CLOUDFLARE_ACCOUNT_ID`. If releases should deploy, rather than every merge to main, also copy `release.yml`: Lighthouse then waits for a release before calling main "not live". When Actions minutes run out, [deploy-from-pc.md](deploy-from-pc.md) does the same deploy from this PC.
+**On Cloudflare Workers:** keep `wrangler.jsonc` at the repo root, because Lighthouse reads the Worker name from it. Copy `.github/workflows/deploy-workers.yml` from checkwork. Then set the repo secrets `CLOUDFLARE_API_TOKEN` (Workers deploy) and `CLOUDFLARE_ACCOUNT_ID`. If releases should deploy, rather than every merge to main, also copy `release.yml` (it calls the deploy workflow): Lighthouse then waits for a release before calling main "not live". When Actions minutes run out, [deploy-from-pc.md](deploy-from-pc.md) does the same deploy from this PC.
 
 **Anywhere else (Vercel):** import the repo in the host and let its GitHub app record deploys. Lighthouse reads GitHub's record of production deploys to tell whether the site runs the latest main.
 
