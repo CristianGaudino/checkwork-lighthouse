@@ -42,10 +42,10 @@ On the Worker (Cloudflare dashboard, Workers & Pages, lighthouse, Settings, Vari
 
 | Secret | What for |
 |---|---|
-| `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Issues, Pull requests, Actions, Deployments, Dependabot alerts and Metadata, plus the account permission Plan (Actions minutes). Deployments tells when a site on Vercel last deployed; public repos work without it. Dependabot alerts gives the security alerts. |
+| `GITHUB_TOKEN` | Fine-grained token with **All repositories** (so a newly added project just works), read-only: Contents, Issues, Pull requests, Actions, Deployments, Dependabot alerts and Metadata, plus the account permission Plan (Actions minutes). Deployments tells when a site on Vercel last deployed; public repos work without it. Dependabot alerts gives the security alerts. Actions also gives why a run failed (the failing job and the end of its log); add Checks: Read for GitHub's error notes beside it. |
 | `UPTIMEROBOT_API_KEY` | UptimeRobot's read-only API key. |
 | `GITHUB_PROJECTS_TOKEN` | Classic token with only `read:project`, for the board: fine-grained tokens can't read projects owned by a personal account. |
-| `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read, Workers Scripts: Read, Billing: Read) for traffic, Worker errors, which sites run the latest main, and the plan's cost. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
+| `CLOUDFLARE_ANALYTICS_TOKEN` | A separate, read-only Cloudflare token (Account Analytics: Read, Workers Scripts: Read, Billing: Read) for traffic, Worker errors, which sites run the latest main, and the plan's cost. Workers Scripts: Read also checks each Worker has the settings its repo's `.env.example` names. The top error messages come from Workers Logs; if Cloudflare refuses that query, the project page asks for the Workers Observability permission. Not named `CLOUDFLARE_API_TOKEN`: wrangler reads that name for its own commands, and the deploy token keeps it. |
 | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account the sites run in. |
 | `NEON_API_KEY` | Neon API key, for compute and storage use. |
 | `GITHUB_WRITE_TOKEN` | Optional. A second fine-grained token, All repositories: Pull requests, Contents, Issues and Actions **Read and write**, for the Merge, Approve, New issue, Re-run failed jobs and Run deploy buttons. Kept apart so the token behind every page load stays read-only. |

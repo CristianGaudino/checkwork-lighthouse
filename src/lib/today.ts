@@ -1,4 +1,5 @@
 import { OWNER, type Project } from '../../lighthouse.config';
+import type { Failure } from './failure';
 import type { PullRequest, RepoStatus } from './github';
 import type { LiveState } from './live';
 import type { Uptime } from './uptime';
@@ -11,13 +12,13 @@ import type { Uptime } from './uptime';
  * `deploy`: the repo whose site is behind main, so this PC can offer to deploy it (docs/deploy-from-pc.md).
  * `fix`: a prompt for Claude Code, offered locally as Fix with Claude. `rerun`: a commit whose failed jobs can run again.
  * `dispatch`: the repo's deploy workflow, to run from here. `batch`: Dependabot PRs whose checks pass, to merge in one go.
- * `release`: a repo whose Release workflow deploys, to cut a release from here.
+ * `release`: a repo whose Release workflow deploys, to cut a release from here. `failure`: why `rerun`'s commit failed, once read.
  */
 export type Task = {
     project: string; level: 1 | 2; action: string; title?: string; detail: string; href: string; incidentRepo?: string; deploy?: string;
     pr?: { repo: string; number: number; sha: string; mine: boolean; canMerge: boolean };
     fix?: string; rerun?: { repo: string; sha: string }; dispatch?: { repo: string; workflow: string }; batch?: { repo: string; prs: { number: number; sha: string }[] };
-    release?: { repo: string };
+    release?: { repo: string }; failure?: Failure;
 };
 
 /** What a task is called for snoozing and notifying: its words change when the thing does (a new commit to release), so a new state shows again. */
@@ -39,7 +40,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
  * Merge only once checks pass, and nobody asked for changes. 'none' counts only where the repo has no checks on PRs:
  * where it has, 'none' means they weren't read, so a failing PR is never one tap from main.
  */
-const canMerge = (pr: PullRequest, checksPrs: boolean) => pr.review !== 'changes' && (pr.checks === 'passing' || (pr.checks === 'none' && !checksPrs));
+export const canMerge = (pr: PullRequest, checksPrs: boolean) => pr.review !== 'changes' && (pr.checks === 'passing' || (pr.checks === 'none' && !checksPrs));
 
 function prTask(project: string, repo: string, checksPrs: boolean, pr: PullRequest, now: number): Task | null {
     if (pr.draft) return null;

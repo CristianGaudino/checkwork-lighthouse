@@ -14,6 +14,9 @@ import { alertTask, fetchAlerts, type Alerts } from '@/lib/security';
 import { domainOf, domainTasks, fetchExpiry } from '@/lib/domains';
 import { fetchIcon, iconsByRepo } from '@/lib/icons';
 import { buildActivity, fetchFailedRuns, fetchHistory, type Event } from '@/lib/activity';
+import { failureText, fetchFailure } from '@/lib/failure';
+import { fetchBindings, missingOnWorker } from '@/lib/secrets';
+import { fetchWorkerErrors, type WorkerError } from '@/lib/werrors';
 import { fetchClaudeCost, fetchCloudflarePlans, type Plan } from '@/lib/costs';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
@@ -168,6 +171,23 @@ const refusedBy = (error: unknown) => /: 40[13]$/.test(String(error instanceof E
 // A refusal is setup still to do, which the page already says quietly: a warning, so dev's error badge stays for real failures
 const logFailure = (what: string, error: unknown) => (refusedBy(error) ? console.warn : console.error)(what, error);
 
+/**
+ * Why each failing commit failed (#56), onto its task and its Fix with Claude prompt. A finished run doesn't change, and a
+ * re-run makes the checks 'running', so ten minutes is safe. Quiet on failure: the task still links to Actions.
+ */
+async function withFailures(tasks: Task[]): Promise<Task[]> {
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) return tasks;
+    return Promise.all(tasks.map(async t => {
+        if (!t.rerun) return t;
+        const { repo, sha } = t.rerun;
+        const failure = await memo(`failure ${sha}`, 10 * MINUTE, () => fetchFailure(token, repo, sha)).catch(error => { logFailure('Could not load why checks failed', error); return null; });
+        return failure ? { ...t, failure, fix: t.fix && `${t.fix}
+
+${failureText(failure)}` } : t;
+    }));
+}
+
 /** Claude API spend and Cloudflare's plans, for Costs. A missing key is a quiet note; a refusal says which permission. */
 export async function loadCosts(): Promise<{ claude?: number; claudeNote?: string; plans?: Plan[]; plansNote?: string }> {
     const admin = process.env.ANTHROPIC_ADMIN_KEY, token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -186,6 +206,36 @@ export async function loadCosts(): Promise<{ claude?: number; claudeNote?: strin
             : { plansNote: 'Set CLOUDFLARE_ANALYTICS_TOKEN and CLOUDFLARE_ACCOUNT_ID to see it.' },
     ]);
     return { ...claude, ...cloudflare };
+}
+
+/**
+ * The top errors per Worker over 24 hours (#58). The query API takes only the Workers Observability permission, so a
+ * refusal is a quiet setup note.
+ */
+export async function loadWorkerErrors(deployed: Map<string, string> | undefined): Promise<{ errors?: Map<string, WorkerError[]>; setup?: string; problem?: string }> {
+    const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    if (!token || !account) return {}; // loadAnalytics already asks for these
+    try {
+        return { errors: await memo('worker errors', 5 * MINUTE, () => fetchWorkerErrors(token, account, deployed ?? new Map())) };
+    } catch (error) {
+        logFailure('Could not load Worker errors', error);
+        return refusedBy(error)
+            ? { setup: 'Add Workers Observability to CLOUDFLARE_ANALYTICS_TOKEN to see the top error messages.' }
+            : { problem: 'Cloudflare did not answer the Workers Logs query. Reload in a minute.' };
+    }
+}
+
+/** Names in .env.example the Worker has no setting for (#34); undefined when that can't be told. */
+export async function loadMissingSettings(worker: string | null, names: string[] | undefined): Promise<string[] | undefined> {
+    const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    if (!token || !account || !worker || !names?.length) return undefined;
+    try {
+        const bindings = await memo(`bindings ${worker}`, 10 * MINUTE, () => fetchBindings(token, account, worker));
+        return bindings ? missingOnWorker(names, bindings) : undefined;
+    } catch (error) {
+        logFailure('Could not load Worker settings', error); // a refusal is the Running column's setup note already
+        return undefined;
+    }
 }
 
 /** Each project's favicon by repo, for the layout's icon classes. Never fails: a site that doesn't answer gets its letter tile. */
@@ -233,7 +283,7 @@ export const loadToday = cache(async function loadToday() {
         ...(analytics.data && account ? workerTasks(rows, analytics.data, account) : []),
     ];
     // Stable sort: these slot in by level, after the project tasks of the same level
-    const tasks = [...board.tasks, ...extra].sort((a, b) => a.level - b.level);
+    const tasks = await withFailures([...board.tasks, ...extra].sort((a, b) => a.level - b.level));
     // One row per site, in PROJECTS order, for the Sites list and each project's page; its light counts every task it has
     const sites = board.projects.map((p, i) => ({
         p, live: live[i], worker: rows[i].worker, light: lightOf(tasks.filter(t => t.project === p.name)),

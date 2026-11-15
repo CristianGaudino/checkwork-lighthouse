@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OWNER, type Project } from '../../lighthouse.config';
+import { envNames } from './secrets';
 
 const Pr = z.object({
     number: z.number(),
@@ -25,6 +26,7 @@ const Repo = z.object({
     // null when the repo has no workflows folder; a file's text is null when GitHub calls it binary
     workflows: z.object({ entries: z.array(z.object({ name: z.string(), object: z.object({ text: z.string().nullable().optional() }).nullable().optional() })) }).nullable().optional(),
     wrangler: z.object({ text: z.string().nullable() }).nullable().optional(),
+    env: z.object({ text: z.string().nullable() }).nullable().optional(),
     main: z.object({
         history: z.object({ nodes: z.array(z.object({ committedDate: z.string(), messageHeadline: z.string() })) }),
         oid: z.string().optional(),
@@ -62,10 +64,11 @@ export type PullRequest = {
  * file of one that can also be run by hand (workflow_dispatch), for the Run deploy button.
  * `main`: when main's newest commit and its recent merges landed, newest first, to tell what the live Worker is missing,
  * and how the newest commit's checks went ('none' too when the token can't see them: see fetchRuns).
+ * `envNames`: the names .env.example sets, to check the Worker has them (secrets.ts).
  */
 export type RepoStatus = {
     prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; checksPrs: boolean; deploysWorker: boolean; deployWorkflow: string | null; isPrivate: boolean;
-    worker: string | null; versions: Record<string, string>; main: { sha: string | null; head: string | null; merges: string[]; checks: PullRequest['checks'] };
+    worker: string | null; versions: Record<string, string>; envNames: string[]; main: { sha: string | null; head: string | null; merges: string[]; checks: PullRequest['checks'] };
 } | null;
 
 // Rollup states: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED
@@ -84,6 +87,7 @@ const FIELDS = `
   pkg: object(expression: "HEAD:package.json") { ... on Blob { text } }
   workflows: object(expression: "HEAD:.github/workflows") { ... on Tree { entries { name object { ... on Blob { text } } } } }
   wrangler: object(expression: "HEAD:wrangler.jsonc") { ... on Blob { text } }
+  env: object(expression: "HEAD:.env.example") { ... on Blob { text } }
   main: object(expression: "main") { ... on Commit { oid statusCheckRollup { state } history(first: 30) { nodes { committedDate messageHeadline } } } }`;
 
 /** One GraphQL query covers every repo (aliases r0, r1...), so the page costs one GitHub request however many projects there are. */
@@ -118,6 +122,7 @@ export function parseRepo(raw: unknown): RepoStatus {
         isPrivate: repo.isPrivate ?? true,
         worker: workerName(repo.wrangler?.text),
         versions: readVersions(repo.pkg?.text),
+        envNames: envNames(repo.env?.text),
         main: {
             sha: repo.main?.oid ?? null,
             head: repo.main?.history.nodes[0]?.committedDate ?? null,

@@ -10,7 +10,7 @@ import { severe } from '@/lib/security';
 import { setupChecks } from '@/lib/setup';
 import { ago } from '@/lib/today';
 import { OWNER, PROJECTS } from '../../../../lighthouse.config';
-import { loadToday } from '../../_data';
+import { loadMissingSettings, loadToday, loadWorkerErrors } from '../../_data';
 import { Board } from '../../_sections/Board';
 import { ClaudeSessions } from '../../_sections/Claude';
 import { Git } from '../../_sections/Pc';
@@ -18,7 +18,7 @@ import { liveText, uptimeText, Week } from '../../_sections/Sites';
 import { ProjectIcon } from '../../_sections/ProjectIcon';
 import { DeployLink, Tasks } from '../../_sections/Tasks';
 import { Versions } from '../../_sections/Usage';
-import { Dot, ext, link, num, PageTitle, panel, Problem, Section } from '../../_sections/ui';
+import { Dot, ext, link, num, PageTitle, panel, Problem, Section, Setup } from '../../_sections/ui';
 
 const find = (repo: string) => PROJECTS.findIndex(p => p.repo === repo);
 const date = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -41,6 +41,8 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
     const local = process.env.NODE_ENV === 'development';
     const [t, pc, sessions] = await Promise.all([loadToday(), readLocalRepos(), readSessions()]);
     const { p, live, worker, light, alerts, expires } = t.sites[i];
+    const [werrors, unset] = await Promise.all([worker ? loadWorkerErrors(t.deploys.deployed) : null, loadMissingSettings(worker, p.repoStatus?.envNames)]);
+    const top = worker ? werrors?.errors?.get(worker) : undefined;
     const traffic = t.analytics.data?.traffic.get(siteKey(p.site));
     const w = worker ? t.analytics.data?.workers.get(worker) : undefined;
     const release = p.repoStatus?.release;
@@ -108,6 +110,32 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                 )}
 
                 {tasks.length > 0 && <Section title="Needs you"><Tasks tasks={tasks} local={local} /></Section>}
+
+                {unset && unset.length > 0 && (
+                    <Section title="Worker settings" aside={`${unset.length} not set`}>
+                        <p className="mt-3 max-w-2xl text-sm text-fg-muted">
+                            In .env.example but not on the {worker} Worker. Some may be optional; a missing one it needs breaks the site.
+                        </p>
+                        <p className="mt-2 flex flex-wrap gap-2">{unset.map(name => <code key={name} className="rounded-md border border-line px-2 py-0.5 font-mono text-xs">{name}</code>)}</p>
+                    </Section>
+                )}
+
+                {worker && werrors && (top?.length || werrors.setup || werrors.problem) ? (
+                    <Section title="Worker errors" aside="24 hours">
+                        {werrors.problem && <Problem>{werrors.problem}</Problem>}
+                        {werrors.setup && <Setup>{werrors.setup}</Setup>}
+                        {top && top.length > 0 && (
+                            <ul className={`${panel} text-sm`}>
+                                {top.map(e => (
+                                    <li key={e.message} className="flex items-baseline justify-between gap-4 px-4 py-2">
+                                        <span className="min-w-0 break-words font-mono text-xs">{e.message}{e.fresh && <span className="ml-2 font-sans text-warn">New since the deploy</span>}</span>
+                                        <span className="shrink-0 tabular-nums text-fg-muted">{num.format(e.count)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </Section>
+                ) : null}
 
                 <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
                     <Board local={local} project={p.name} />
