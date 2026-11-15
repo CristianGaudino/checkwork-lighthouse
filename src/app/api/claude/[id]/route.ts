@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { parseTail } from '@/lib/claude';
-import { answer, configure, interrupt, open, picturesOf, prefsOf, runView, send } from '@/lib/runner';
+import { answer, configure, interrupt, movedTo, open, picturesOf, prefsOf, runView, send } from '@/lib/runner';
 import { isSessionId, placeOf, readTail, readTranscript, transcriptPath } from '@/lib/transcript';
 import { refuse } from '../guard';
 
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<'/api/claude/[id]'
     // Written to a moment ago by something other than Lighthouse: most likely open in VS Code right now
     // (a run only opened to show its settings writes nothing)
     const elsewhere = (!run?.used || run.state === 'ended') && Date.now() - tail.mtimeMs < BUSY_MS;
-    return NextResponse.json({ ...slice, session, run, elsewhere });
+    return NextResponse.json({ ...slice, session, run, elsewhere, moved: movedTo(id) });
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext<'/api/claude/[id]'>) {
@@ -59,8 +59,12 @@ export async function POST(req: NextRequest, ctx: RouteContext<'/api/claude/[id]
         if ((!text && !images.length) || text.length > 100_000) return NextResponse.json({ error: 'Write a message first.' }, { status: 400 });
         const at = await place(g.file);
         if ('error' in at) return at.error;
-        await send(id, text, at.cwd, at.mode, images);
-        return NextResponse.json({ ok: true });
+        try {
+            await send(id, text, at.cwd, at.mode, images);
+            return NextResponse.json({ ok: true });
+        } catch (error) {
+            return NextResponse.json({ error: error instanceof Error ? error.message : 'Claude Code did not start.' }, { status: 502 });
+        }
     }
     // Opening the page: the slash commands and models to offer (gets the session ready, sends nothing)
     if (body.action === 'open') {

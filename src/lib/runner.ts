@@ -24,8 +24,6 @@ export type Ask = {
 export type RunView = {
     state: 'working' | 'idle' | 'ended'; error?: string; asks: Ask[]; used: boolean;
     context?: { tokens: number; max: number }; model?: string; effort?: EffortLevel; mode: string;
-    /** /clear carried on in a new session: the page follows it there */
-    moved?: string;
 };
 /** What the page offers while you type: slash commands, and the models to pick from. */
 export type Meta = {
@@ -42,7 +40,9 @@ type Run = {
     id: string; inbox: Inbox; query?: Query; state: RunView['state']; error?: string; pending: Map<string, Pending>; timer?: ReturnType<typeof setTimeout>; known: Promise<string>;
     /** Settles once `query` is set (or the SDK failed to load): a run is listed before that, so callers wait for it */
     ready: Promise<void>;
-    used: boolean; mode: string; context?: RunView['context']; model?: string; meta?: Promise<Meta>; cleared?: boolean; moved?: string;
+    used: boolean; mode: string; context?: RunView['context']; model?: string; meta?: Promise<Meta>;
+    /** The session /clear is leaving, until the new one is under way */
+    from?: string;
 };
 
 const IDLE_MS = 15 * 60_000; // a run with nothing to do ends after this, and the next message starts a new one
@@ -54,6 +54,10 @@ export const EFFORTS = new Set<EffortLevel>(['low', 'medium', 'high', 'xhigh', '
 // Route handlers and pages can load this file separately in dev, so the runs live on globalThis to be shared
 const runs: Map<string, Run> = ((globalThis as { __lighthouseRuns?: Map<string, Run> }).__lighthouseRuns ??= new Map());
 const prefs: Map<string, Prefs> = ((globalThis as { __lighthousePrefs?: Map<string, Prefs> }).__lighthousePrefs ??= new Map());
+// Where /clear took each session: the page that sent it follows
+const moves: Map<string, string> = ((globalThis as { __lighthouseMoves?: Map<string, string> }).__lighthouseMoves ??= new Map());
+
+export const movedTo = (id: string) => moves.get(id);
 
 /** Messages for a running query: it reads them as they come, so a message sent while Claude works is queued, not lost. */
 class Inbox implements AsyncIterable<SDKUserMessage> {
@@ -140,7 +144,7 @@ export function runView(id: string): RunView | null {
     const r = runs.get(id);
     if (!r) return null;
     const p = prefs.get(id);
-    return { state: r.state, error: r.error, asks: [...r.pending.values()].map(view), used: r.used, context: r.context, model: p?.model ?? r.model, effort: p?.effort ?? undefined, mode: r.mode, moved: r.moved };
+    return { state: r.state, error: r.error, asks: [...r.pending.values()].map(view), used: r.used, context: r.context, model: p?.model ?? r.model, effort: p?.effort ?? undefined, mode: r.mode };
 }
 
 function touch(run: Run) {
@@ -209,7 +213,7 @@ async function start(resume: string | null, cwd: string, mode: string | null): P
                 if (m.type === 'system' && m.subtype === 'init') {
                     if (!run.id) { run.id = m.session_id; runs.set(run.id, run); named(run.id); }
                     // After /clear the conversation carries on in a new session: answer to its id too, with the same settings
-                    else if (m.session_id !== run.id) { runs.set(m.session_id, run); prefs.set(m.session_id, { ...prefs.get(run.id) }); run.id = m.session_id; run.cleared = true; }
+                    else if (m.session_id !== run.id) { runs.set(m.session_id, run); prefs.set(m.session_id, { ...prefs.get(run.id) }); run.from = run.id; run.id = m.session_id; }
                     run.mode = m.permissionMode;
                 }
                 // The mode can change mid-turn, as when you approve a plan
@@ -217,7 +221,8 @@ async function start(resume: string | null, cwd: string, mode: string | null): P
                 if (m.type === 'result') {
                     run.state = 'idle'; touch(run); void measure(run);
                     // The new transcript starts with the /clear, so it's there to read by now
-                    if (run.cleared) { run.cleared = false; run.moved = run.id; }
+                    // and the old session is let go: a reply to it later resumes it, not this one
+                    if (run.from) { moves.set(run.from, run.id); if (runs.get(run.from) === run) runs.delete(run.from); run.from = undefined; }
                 } else if (m.type === 'assistant' || m.type === 'user') run.state = 'working';
             }
         } catch (error) {
@@ -246,6 +251,7 @@ async function live(id: string, cwd: string, mode: string | null) {
 /** Sends a message, with any pictures, into a session, starting a run for it when none is going. */
 export async function send(id: string, text: string, cwd: string, mode: string | null, images: Image[] = []) {
     const run = await live(id, cwd, mode);
+    moves.delete(id); // carrying on here: an earlier /clear's move no longer applies
     run.used = true;
     run.state = 'working';
     run.inbox.push(content(text, images));

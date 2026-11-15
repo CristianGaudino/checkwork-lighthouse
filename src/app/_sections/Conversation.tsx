@@ -16,7 +16,7 @@ import { Bone, Dots, short } from './ui';
  * quickly while it works, slowly while it waits.
  */
 
-type Slice = { entries: Entry[]; start: number; end: number; size: number; reset?: boolean; session: Session | null; run: RunView | null; elsewhere: boolean };
+type Slice = { entries: Entry[]; start: number; end: number; size: number; reset?: boolean; session: Session | null; run: RunView | null; elsewhere: boolean; moved?: string };
 
 const FAST = 1500, SLOW = 5000;
 const NEAR = 120; // px from an edge that counts as "at" it
@@ -42,7 +42,7 @@ async function api(id: string, init?: { query?: string; body?: object }) {
 export function Conversation({ id }: { id: string }) {
     const [entries, setEntries] = useState<Entry[]>([]);
     const [range, setRange] = useState<{ start: number; end: number; size: number } | null>(null);
-    const [info, setInfo] = useState<Pick<Slice, 'session' | 'run' | 'elsewhere'> | null>(null);
+    const [info, setInfo] = useState<Pick<Slice, 'session' | 'run' | 'elsewhere' | 'moved'> | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [older, setOlder] = useState(false);
     const [fresh, setFresh] = useState<Set<string>>(new Set()); // came in live: these fade in
@@ -155,15 +155,17 @@ export function Conversation({ id }: { id: string }) {
     const router = useRouter();
     const state = session?.state;
     useEffect(() => { if (state) router.refresh(); }, [state, router]);
-    // /clear carried on in a new session
-    const moved = run?.moved;
-    useEffect(() => { if (moved && moved !== id) router.replace(`/claude/${moved}`); }, [moved, id, router]);
+    // /clear carried on in a new session: followed when you sent it from here, not when you come back to the old one
+    const sent = useRef(false);
+    const moved = info?.moved;
+    useEffect(() => { if (moved && sent.current) router.replace(`/claude/${moved}`); }, [moved, router]);
     const working = live?.state === 'working' || (!live && session?.state === 'working') || outbox.length > 0;
 
     const say: Say = async (text, pictures = []) => {
         // Shown at once, until the transcript has it
         const shown = [text, pictures.length && `[${pictures.length === 1 ? 'a picture' : `${pictures.length} pictures`}]`].filter(Boolean).join('\n');
         stick.current = true;
+        sent.current = true;
         setOutbox(o => [...o, shown]);
         try {
             await api(id, { body: { action: 'send', text, images: pictures.map(({ type, data }) => ({ type, data })) } });

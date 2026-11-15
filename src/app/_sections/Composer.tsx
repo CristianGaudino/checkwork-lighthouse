@@ -129,7 +129,9 @@ export function Composer({ id, commands, onSay, onError }: { id: string; command
                     onKeyDown={e => {
                         if (menu.length) {
                             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setPick(p => (p + (e.key === 'ArrowDown' ? 1 : menu.length - 1)) % menu.length); return; }
-                            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); choose(menu[pick]?.name ?? menu[0].name); return; }
+                            // Enter on a command typed in full sends it, as in Claude Code; otherwise it fills in the one picked
+                            const whole = e.key === 'Enter' && menu[pick]?.name === typed;
+                            if (!whole && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey))) { e.preventDefault(); choose(menu[pick]?.name ?? menu[0].name); return; }
                             if (e.key === 'Escape') { e.preventDefault(); setClosed(true); return; }
                         }
                         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void sendIt(); }
