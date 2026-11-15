@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Session } from '@/lib/claude';
-import type { Ask, RunView } from '@/lib/runner';
+import type { Ask, Meta, RunView } from '@/lib/runner';
 import type { Entry } from '@/lib/transcript';
 import { resumeHref } from '@/lib/vscode';
+import { Composer, Macros, Settings, type Say } from './Composer';
 import { Markdown } from './Markdown';
-import { Bone, Dots } from './ui';
+import { Bone, Dots, short } from './ui';
 
 /**
  * One Claude Code session, used from Lighthouse: its whole history (older parts load as you scroll up), what it is
@@ -49,6 +50,7 @@ export function Conversation({ id }: { id: string }) {
     const [unread, setUnread] = useState(0); // arrived while you were scrolled up
     const [away, setAway] = useState(false);
     const [stopping, setStopping] = useState(false);
+    const [meta, setMeta] = useState<Meta | null>(null); // the session's commands and models
     const scroller = useRef<HTMLDivElement>(null);
     const stick = useRef(true); // at the bottom: new messages keep it there
     const keep = useRef<number | null>(null); // height before older messages went in on top
@@ -68,6 +70,13 @@ export function Conversation({ id }: { id: string }) {
         );
         return () => { current = false; };
     }, [id, round]);
+
+    // Gets the session ready (sends nothing) for its commands, models and context; the poll then shows its settings
+    useEffect(() => {
+        let current = true;
+        api(id, { body: { action: 'open' } }).then((m: Meta) => { if (current) setMeta(m); }, e => { if (current) setError(message(e)); });
+        return () => { current = false; };
+    }, [id]);
 
     // New lines while it runs: quickly when something is happening, slowly otherwise, never in a hidden tab
     const busy = info?.run?.state === 'working' || info?.session?.state === 'working' || info?.session?.state === 'blocked' || Boolean(info?.run?.asks.length) || outbox.length > 0;
@@ -138,13 +147,40 @@ export function Conversation({ id }: { id: string }) {
 
     const results = new Map(entries.flatMap(e => (e.kind === 'result' ? [[e.toolId, e] as const] : [])));
     const shown = entries.filter(e => e.kind !== 'result');
-    const run = info?.run, session = info?.session;
+    const run = info?.run ?? null, session = info?.session;
+    // A run only opened to show settings says nothing about the session, which may be working in VS Code
+    const live = run?.used ? run : null;
     // The list beside this stays put between sessions (the layout's), so it's brought up to date when this one opens or
     // changes state: a session just started appears in it, and a reply turns "Your turn" into "Working" there too
     const router = useRouter();
     const state = session?.state;
     useEffect(() => { if (state) router.refresh(); }, [state, router]);
-    const working = run?.state === 'working' || (!run && session?.state === 'working') || outbox.length > 0;
+    // /clear carried on in a new session
+    const moved = run?.moved;
+    useEffect(() => { if (moved && moved !== id) router.replace(`/claude/${moved}`); }, [moved, id, router]);
+    const working = live?.state === 'working' || (!live && session?.state === 'working') || outbox.length > 0;
+
+    const say: Say = async (text, pictures = []) => {
+        // Shown at once, until the transcript has it
+        const shown = [text, pictures.length && `[${pictures.length === 1 ? 'a picture' : `${pictures.length} pictures`}]`].filter(Boolean).join('\n');
+        stick.current = true;
+        setOutbox(o => [...o, shown]);
+        try {
+            await api(id, { body: { action: 'send', text, images: pictures.map(({ type, data }) => ({ type, data })) } });
+            setInfo(i => (i ? { ...i, run: { asks: [], mode: 'default', ...i.run, state: 'working', used: true } } : i));
+            return true;
+        } catch (e) {
+            setOutbox(o => o.filter(x => x !== shown));
+            setError(message(e));
+            return false;
+        }
+    };
+    const set = async (change: { model?: string; effort?: string | null; mode?: string }) => {
+        try {
+            await api(id, { body: { action: 'set', ...change } });
+            setInfo(i => (i?.run ? { ...i, run: { ...i.run, ...change, effort: change.effort === null ? undefined : (change.effort ?? i.run.effort) } as RunView } : i));
+        } catch (e) { setError(message(e)); }
+    };
     // How much of the history is on the page, by bytes: tool output makes it a rough guide, which is all it needs to be
     const seen = range && range.size ? Math.round(((range.size - range.start) / range.size) * 100) : 100;
 
@@ -155,11 +191,12 @@ export function Conversation({ id }: { id: string }) {
                     <h1 className="truncate text-lg font-semibold">{session?.title ?? (info ? 'Session' : <Bone className="h-6 w-56 max-w-full" />)}</h1>
                     <p className="text-sm text-fg-muted">
                         {session?.repo}{session && ', '}
-                        {run?.asks.length ? 'Waiting for your answer' : working ? 'Working' : run?.state === 'idle' ? 'Your turn' : session ? SAID[session.state] : info ? '' : 'Loading'}
+                        {run?.asks.length ? 'Waiting for your answer' : working ? 'Working' : live?.state === 'idle' ? 'Your turn' : session ? SAID[session.state] : info ? '' : 'Loading'}
                     </p>
                 </div>
                 <div className="flex items-center gap-4 text-sm text-fg-muted">
-                    {working && run && <button type="button" disabled={stopping} className={button} onClick={stop}>{stopping ? 'Stopping' : 'Stop'}</button>}
+                    {run?.context && <Context {...run.context} onCompact={working ? undefined : () => void say('/compact')} />}
+                    {working && live && <button type="button" disabled={stopping} className={button} onClick={stop}>{stopping ? 'Stopping' : 'Stop'}</button>}
                     <a className="underline-offset-4 hover:text-fg hover:underline" href={resumeHref(id)}>Open in VS Code</a>
                 </div>
             </header>
@@ -191,13 +228,31 @@ export function Conversation({ id }: { id: string }) {
             {error && <p role="status" className="mb-2 animate-rise text-sm text-warn">{error}</p>}
             {info?.elsewhere && <p className="mb-2 text-sm text-warn">This session was busy a moment ago, most likely in VS Code. Replying here runs it in two places, which can mix up its messages. Close it in VS Code first.</p>}
             {run?.asks.map(a => <AskCard key={a.key} id={id} ask={a} onDone={() => setRange(r => (r ? { ...r } : r))} onError={setError} />)}
-            {info
-                ? <Composer id={id}
-                    onSending={t => { stick.current = true; setOutbox(o => [...o, t]); }}
-                    onSent={() => setInfo(i => (i ? { ...i, run: { state: 'working', asks: i.run?.asks ?? [] } } : i))}
-                    onFailed={(t, e) => { setOutbox(o => o.filter(x => x !== t)); setError(e); }} />
-                : <div className="flex gap-2 border-t border-line pt-3"><Bone className="h-11 flex-1 rounded-xl" /><Bone className="h-11 w-16 rounded-lg" /></div>}
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-2 border-t border-line pt-3">
+                {info
+                    ? <>
+                        <Macros onSay={say} />
+                        <Composer id={id} commands={meta?.commands ?? []} onSay={say} onError={setError} />
+                        <Settings run={run} models={meta?.models ?? null} onSet={c => void set(c)} />
+                    </>
+                    : <div className="flex gap-2"><Bone className="h-11 flex-1 rounded-xl" /><Bone className="h-11 w-16 rounded-lg" /></div>}
+            </div>
         </div>
+    );
+}
+
+/** How full the context window is; past 70% a button to compact it (Claude Code compacts by itself near the end). */
+function Context({ tokens, max, onCompact }: { tokens: number; max: number; onCompact?: () => void }) {
+    const part = max ? Math.min(1, tokens / max) : 0;
+    const full = part >= 0.7;
+    return (
+        <span className="flex items-center gap-2 tabular-nums" title={`${tokens.toLocaleString()} of ${max.toLocaleString()} tokens`}>
+            <span aria-hidden className="h-1.5 w-12 overflow-hidden rounded-full bg-surface shadow-[inset_0_0_0_1px_var(--line)]">
+                <span className={`block h-full origin-left rounded-full transition-[width] duration-500 ${full ? 'bg-warn' : 'bg-fg-muted'}`} style={{ width: `${part * 100}%` }} />
+            </span>
+            <span className={full ? 'text-warn' : ''}>{Math.round(part * 100)}%<span className="sr-only"> of the context used, {short.format(tokens)} tokens</span></span>
+            {full && onCompact && <button type="button" onClick={onCompact} className={button}>Compact</button>}
+        </span>
     );
 }
 
@@ -307,39 +362,3 @@ function AskCard({ id, ask, onDone, onError }: { id: string; ask: Ask; onDone: (
     );
 }
 
-const draftKey = (id: string) => `lighthouse.draft.${id}`;
-const readDraft = (id: string) => { try { return localStorage.getItem(draftKey(id)) ?? ''; } catch { return ''; } };
-const saveDraft = (id: string, text: string) => { try { if (text) localStorage.setItem(draftKey(id), text); else localStorage.removeItem(draftKey(id)); } catch { /* private window: no draft kept */ } };
-
-/**
- * The reply box: Enter sends, Shift+Enter makes a new line. Only ever rendered in the browser (after the first load),
- * so it can start from the draft you left in this session and take the focus on a computer.
- */
-function Composer({ id, onSending, onSent, onFailed }: { id: string; onSending: (t: string) => void; onSent: () => void; onFailed: (t: string, e: string) => void }) {
-    const [text, setText] = useState(() => readDraft(id));
-    const [busy, setBusy] = useState(false);
-    const [focus] = useState(() => window.matchMedia('(pointer: fine)').matches); // a phone's keyboard shouldn't pop up by itself
-    const change = (t: string) => { setText(t); saveDraft(id, t); };
-    const sendIt = async () => {
-        const t = text.trim();
-        if (!t || busy) return;
-        setBusy(true);
-        onSending(t); change('');
-        try { await api(id, { body: { action: 'send', text: t } }); onSent(); } catch (e) { change(text); onFailed(t, message(e)); } finally { setBusy(false); }
-    };
-    return (
-        <form onSubmit={e => { e.preventDefault(); void sendIt(); }} className="flex items-end gap-2 border-t border-line pt-3">
-            <textarea
-                autoFocus={focus}
-                value={text}
-                onChange={e => change(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void sendIt(); } }}
-                rows={Math.min(8, Math.max(1, text.split('\n').length))}
-                placeholder="Reply to Claude"
-                aria-label="Reply to Claude"
-                className="min-h-11 flex-1 resize-none rounded-xl border border-line bg-surface px-3 py-2.5 text-[15px] text-fg transition-colors placeholder:text-fg-muted focus:border-fg-muted"
-            />
-            <button type="submit" disabled={busy || !text.trim()} className={`${primary} h-11 px-4`}>Send</button>
-        </form>
-    );
-}

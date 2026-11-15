@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { parseTail } from '@/lib/claude';
-import { answer, interrupt, runView, send } from '@/lib/runner';
+import { answer, configure, interrupt, open, picturesOf, prefsOf, runView, send } from '@/lib/runner';
 import { isSessionId, placeOf, readTail, readTranscript, transcriptPath } from '@/lib/transcript';
 import { refuse } from '../guard';
 
@@ -21,6 +21,14 @@ async function guard(req: NextRequest, id: string) {
     return file ? { file } : { error: nope(404) };
 }
 
+/** Where the session worked and its permission mode, from its transcript: a run starts there. */
+async function place(file: string): Promise<{ cwd: string; mode: string | null } | { error: NextResponse }> {
+    const { stat } = await import('node:fs/promises');
+    const { cwd, mode } = placeOf((await readTail(file)).text);
+    if (!cwd || !(await stat(cwd).then(d => d.isDirectory(), () => false))) return { error: NextResponse.json({ error: 'The folder this session worked in is gone.' }, { status: 409 }) };
+    return { cwd, mode };
+}
+
 const num = (v: string | null) => (v !== null && /^\d+$/.test(v) ? Number(v) : undefined);
 
 export async function GET(req: NextRequest, ctx: RouteContext<'/api/claude/[id]'>) {
@@ -33,7 +41,8 @@ export async function GET(req: NextRequest, ctx: RouteContext<'/api/claude/[id]'
     const session = parseTail(tail.text, id);
     const run = runView(id);
     // Written to a moment ago by something other than Lighthouse: most likely open in VS Code right now
-    const elsewhere = (!run || run.state === 'ended') && Date.now() - tail.mtimeMs < BUSY_MS;
+    // (a run only opened to show its settings writes nothing)
+    const elsewhere = (!run?.used || run.state === 'ended') && Date.now() - tail.mtimeMs < BUSY_MS;
     return NextResponse.json({ ...slice, session, run, elsewhere });
 }
 
@@ -45,12 +54,35 @@ export async function POST(req: NextRequest, ctx: RouteContext<'/api/claude/[id]
     if (!body) return nope(400);
     if (body.action === 'send') {
         const text = typeof body.text === 'string' ? body.text.trim() : '';
-        if (!text || text.length > 100_000) return NextResponse.json({ error: 'Write a message first.' }, { status: 400 });
-        const { stat } = await import('node:fs/promises');
-        const { cwd, mode } = placeOf((await readTail(g.file)).text);
-        if (!cwd || !(await stat(cwd).then(d => d.isDirectory(), () => false))) return NextResponse.json({ error: 'The folder this session worked in is gone.' }, { status: 409 });
-        await send(id, text, cwd, mode);
+        const images = picturesOf(body.images);
+        if (!images) return NextResponse.json({ error: 'Pictures must be PNG, JPEG, GIF or WebP, up to 5 MB each and 4 at a time.' }, { status: 400 });
+        if ((!text && !images.length) || text.length > 100_000) return NextResponse.json({ error: 'Write a message first.' }, { status: 400 });
+        const at = await place(g.file);
+        if ('error' in at) return at.error;
+        await send(id, text, at.cwd, at.mode, images);
         return NextResponse.json({ ok: true });
+    }
+    // Opening the page: the slash commands and models to offer (gets the session ready, sends nothing)
+    if (body.action === 'open') {
+        const at = await place(g.file);
+        if ('error' in at) return at.error;
+        try {
+            return NextResponse.json(await open(id, at.cwd, at.mode));
+        } catch (error) {
+            return NextResponse.json({ error: error instanceof Error ? error.message : 'Claude Code did not start.' }, { status: 502 });
+        }
+    }
+    if (body.action === 'set') {
+        const change = prefsOf(body);
+        if (!change) return nope(400);
+        const at = await place(g.file);
+        if ('error' in at) return at.error;
+        try {
+            await configure(id, change, at.cwd, at.mode);
+            return NextResponse.json({ ok: true });
+        } catch (error) {
+            return NextResponse.json({ error: error instanceof Error ? error.message : 'Claude Code said no to that.' }, { status: 409 });
+        }
     }
     if (body.action === 'answer' && typeof body.key === 'string') {
         const answers = body.answers && typeof body.answers === 'object' ? Object.fromEntries(Object.entries(body.answers).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined;

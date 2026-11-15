@@ -10,7 +10,7 @@ const useCurrent = () => useSelectedLayoutSegment();
 export function ClaudePanes({ list, children }: { list: React.ReactNode; children: React.ReactNode }) {
     const current = useCurrent();
     return (
-        <div className="grid h-[calc(100dvh-12rem)] min-h-96 gap-6 lg:h-[calc(100dvh-6.5rem)] lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <div className="grid h-[calc(100dvh-12rem)] min-h-96 grid-cols-[minmax(0,1fr)] gap-6 lg:h-[calc(100dvh-6.5rem)] lg:grid-cols-[18rem_minmax(0,1fr)]">
             <aside className={`min-h-0 flex-col gap-3 ${current ? 'hidden lg:flex' : 'flex'}`}>{list}</aside>
             <section className={`min-h-0 flex-col ${current ? 'flex' : 'hidden lg:flex'}`}>
                 {current && <Link href="/claude" className="mb-2 text-sm text-fg-muted lg:hidden">All sessions</Link>}
