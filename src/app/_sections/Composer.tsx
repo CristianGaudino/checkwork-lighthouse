@@ -16,7 +16,8 @@ const PICTURE_MAX = 5 * 1024 * 1024; // the most Claude takes in one picture
 const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const primary = 'rounded-lg bg-fg px-3 py-1.5 text-sm font-medium text-canvas transition-opacity hover:opacity-90 disabled:opacity-50';
 const chip = 'shrink-0 rounded-full border border-line px-3 py-1 text-sm transition-colors hover:border-fg-muted active:scale-95 disabled:opacity-60';
-const select = 'max-w-40 truncate rounded-lg border border-line bg-surface px-2 py-1 text-xs text-fg-muted transition-colors hover:text-fg disabled:opacity-60';
+// On a phone the three share one row rather than wrapping onto a second, which the conversation would pay for
+const select = 'min-w-0 flex-1 sm:max-w-40 sm:flex-none truncate rounded-lg border border-line bg-surface px-2 py-1 text-xs text-fg-muted transition-colors hover:text-fg disabled:opacity-60';
 
 const draftKey = (id: string) => `lighthouse.draft.${id}`;
 const readDraft = (id: string) => { try { return localStorage.getItem(draftKey(id)) ?? ''; } catch { return ''; } };
@@ -212,7 +213,7 @@ export function Settings({ run, models, onSet }: { run: RunView | null; models: 
     const mode = run?.mode ?? 'default';
     const off = !models || !run;
     return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 sm:flex-wrap">
             <select aria-label="Model" disabled={off} value={current?.value ?? run?.model ?? ''} onChange={e => onSet({ model: e.target.value })} className={select}>
                 {!current && <option value={run?.model ?? ''}>{run?.model ?? 'Model'}</option>}
                 {models?.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}

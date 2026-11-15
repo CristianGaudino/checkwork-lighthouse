@@ -60,6 +60,8 @@
 @layer base {
     :focus-visible { outline: 2px solid var(--accent-alt); outline-offset: 3px; border-radius: 4px; }
     html { -webkit-text-size-adjust: 100%; }
+    /* The page stays put behind an open dialog (the Go to palette) */
+    html:has(dialog[open]) { overflow: hidden; }
     h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
     h1 { letter-spacing: -0.03em; line-height: 1.04; }
     h2 { letter-spacing: -0.022em; line-height: 1.1; }

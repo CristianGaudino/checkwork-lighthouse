@@ -70,7 +70,7 @@ export function Nav({ local }: { local: boolean }) {
     const current = (href: string) => (href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`));
     return (
         <>
-            <aside className="sticky top-0 hidden h-dvh flex-col border-r border-line px-3 py-5 lg:flex">
+            <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto border-r border-line px-3 py-5 lg:flex">
                 <div className="px-3"><Brand id="side" /></div>
                 <button type="button" onClick={openPalette} className="mt-6 flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-fg-muted shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:text-fg">
                     <Icon name="search" />

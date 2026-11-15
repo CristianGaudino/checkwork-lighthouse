@@ -66,7 +66,7 @@ export function Palette({ jumps, local }: { jumps: Jump[]; local: boolean }) {
                 aria-activedescendant={pick ? `palette-${list.indexOf(pick)}` : undefined}
                 className="w-full border-b border-line bg-transparent px-4 py-3 text-[15px] outline-none placeholder:text-fg-muted"
             />
-            <ul id="palette-list" role="listbox" className="max-h-[60vh] overflow-y-auto p-2">
+            <ul id="palette-list" role="listbox" className="max-h-[60vh] overflow-y-auto overscroll-contain p-2">
                 {list.map((j, i) => (
                     <li key={`${j.href} ${j.label}`} id={`palette-${i}`} role="option" aria-selected={j === pick}>
                         <button
