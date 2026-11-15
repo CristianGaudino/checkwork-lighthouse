@@ -19,8 +19,8 @@ export function Minutes({ m, compact }: { m: Data; compact?: boolean }) {
         <Section id="minutes" title="Actions minutes" aside={`${num.format(m.used)} of ${num.format(INCLUDED)}`}>
             <div className="relative mt-3 h-2 rounded-full bg-surface" role="img" aria-label={`${num.format(m.used)} of ${num.format(INCLUDED)} minutes used, on pace for ${num.format(m.projected)}`}>
                 {/* The projection sits behind the used bar as a faint extension */}
-                <div className={`absolute inset-y-0 left-0 rounded-full ${over ? 'bg-warn/30' : 'bg-accent/30'}`} style={{ width: pct(m.projected) }} />
-                <div className={`absolute inset-y-0 left-0 rounded-full ${over ? 'bg-warn' : 'bg-accent'}`} style={{ width: pct(m.used) }} />
+                <div className={`absolute inset-y-0 left-0 origin-left animate-grow rounded-full ${over ? 'bg-warn/30' : 'bg-accent/30'}`} style={{ width: pct(m.projected) }} />
+                <div className={`absolute inset-y-0 left-0 origin-left animate-grow rounded-full ${over ? 'bg-warn' : 'bg-accent'}`} style={{ width: pct(m.used) }} />
             </div>
             <p className="mt-2 text-sm text-fg-muted tabular-nums">
                 On pace for <span className={over ? 'text-warn' : 'text-fg'}>{num.format(m.projected)}</span> by {day.format(lastDay)}. Public repos are free.
@@ -30,7 +30,7 @@ export function Minutes({ m, compact }: { m: Data; compact?: boolean }) {
                     {m.byRepo.map(r => (
                         <li key={r.repo} className={`grid grid-cols-[minmax(7rem,12rem)_1fr_6rem] items-center gap-4 ${r.free ? 'text-fg-muted' : ''}`}>
                             <span className="truncate">{r.repo}</span>
-                            <span className={`h-1 rounded-full ${r.free ? 'bg-fg-muted/15' : 'bg-fg-muted/40'}`} style={{ width: `${(r.minutes / top) * 100}%` }} />
+                            <span className={`h-1 origin-left animate-grow rounded-full ${r.free ? 'bg-fg-muted/15' : 'bg-fg-muted/40'}`} style={{ width: `${(r.minutes / top) * 100}%` }} />
                             <span className="text-right text-fg-muted">{r.free ? `${num.format(r.minutes)}, free` : num.format(r.minutes)}</span>
                         </li>
                     ))}

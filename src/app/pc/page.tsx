@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Gate } from '../_sections/Gate';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/access';
 import { readUsageToday } from '@/lib/claude';
@@ -16,7 +17,12 @@ import { Dot, ext, link, PageTitle, panel, Section } from '../_sections/ui';
 export const metadata = { title: 'This PC' };
 
 /** Local only (`npm run dev`): what this PC can see and do. On the Worker there is no PC, so no page. */
-export default async function ThisPc() {
+export default function Page() {
+    if (process.env.NODE_ENV !== 'development') notFound(); // no PC on the Worker
+    return <Gate><ThisPc /></Gate>;
+}
+
+async function ThisPc() {
     await requireAdmin();
     const [pc, t] = await Promise.all([readLocalRepos(), loadToday()]);
     if (!pc) notFound();

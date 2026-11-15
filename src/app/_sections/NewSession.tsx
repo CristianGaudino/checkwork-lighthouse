@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Dots } from './ui';
 
 /** Start a Claude Code session in one of this PC's repos, from here. It opens as soon as Claude has picked it up. */
 export function NewSession({ repos }: { repos: string[] }) {
@@ -31,8 +32,8 @@ export function NewSession({ repos }: { repos: string[] }) {
                     {repos.map(r => <option key={r}>{r}</option>)}
                 </select>
                 <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="What should Claude do?" aria-label="First message" className={field} />
-                <button type="submit" disabled={busy || !text.trim()} className="rounded-lg bg-fg px-3 py-1.5 font-medium text-canvas disabled:opacity-50">{busy ? 'Starting' : 'Start'}</button>
-                {error && <p role="status" className="text-warn">{error}</p>}
+                <button type="submit" disabled={busy || !text.trim()} className="rounded-lg bg-fg px-3 py-1.5 font-medium text-canvas disabled:opacity-50">{busy ? <>Starting<Dots /></> : 'Start'}</button>
+                {error && <p role="status" className="animate-rise text-warn">{error}</p>}
             </form>
         </details>
     );

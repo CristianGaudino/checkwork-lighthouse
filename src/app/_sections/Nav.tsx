@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useFormStatus } from 'react-dom';
 import { Mark } from '@/components/Mark';
 import { refresh } from '../ask';
 import { openPalette } from './Palette';
@@ -40,9 +41,19 @@ const Icon = ({ name }: { name: keyof typeof ICONS }) => (
 );
 
 const RefreshButton = ({ className, form = '' }: { className: string; form?: string }) => (
-    // Answers are remembered for a minute or more (src/lib/memo.ts); this fetches everything now
-    <form action={refresh} className={form}><button type="submit" className={className}>Refresh</button></form>
+    // Answers are remembered for a minute or more (src/lib/memo.ts); this fetches everything now, which takes a few seconds
+    <form action={refresh} className={form}><Refreshing className={className} /></form>
 );
+
+function Refreshing({ className }: { className: string }) {
+    const { pending } = useFormStatus();
+    return (
+        <button type="submit" disabled={pending} className={`flex items-center gap-2 ${className}`}>
+            <svg viewBox="0 0 24 24" className={`size-4 shrink-0 ${pending ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4" /></svg>
+            {pending ? 'Refreshing' : 'Refresh'}
+        </button>
+    );
+}
 
 // Two copies of the brand (sidebar, phone bar), so each Mark needs its own gradient id: one inside a hidden sidebar blanks the other
 const Brand = ({ id }: { id: string }) => (

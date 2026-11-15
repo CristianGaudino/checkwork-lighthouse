@@ -3,7 +3,7 @@ import { ago } from '@/lib/today';
 import { needsYou, type Session, type SessionState } from '@/lib/claude';
 import { resumeHref } from '@/lib/vscode';
 import { ProjectIcon } from './ProjectIcon';
-import { ext, link, n, num, panel, Section } from './ui';
+import { ext, link, n, num, panel, Section, short } from './ui';
 
 const STATE: Record<SessionState, { text: string; dot: string }> = {
     question: { text: 'Asking you', dot: 'bg-warn' },
@@ -62,12 +62,12 @@ export function ClaudeToday({ usage }: { usage: { repo: string; tokens: number; 
     if (!usage.length) return null;
     const total = usage.reduce((sum, u) => sum + u.tokens, 0);
     return (
-        <Section title="Claude today" aside={<><Link className={link} href="/claude">Sessions</Link>, {num.format(total)} tokens written</>}>
+        <Section title="Claude today" aside={<><Link className={link} href="/claude">Sessions</Link>, <span title={`${num.format(total)} tokens`}>{short.format(total)}</span> tokens written</>}>
             <ul className={`${panel} text-sm tabular-nums`}>
                 {usage.map(u => (
                     <li key={u.repo} className="flex items-center justify-between gap-4 px-4 py-2">
                         <span className="flex min-w-0 items-center gap-3"><ProjectIcon project={u.repo} /><span className="truncate">{u.repo}</span></span>
-                        <span className="text-fg-muted">{n(u.sessions, 'session')}, {num.format(u.tokens)} tokens</span>
+                        <span className="text-fg-muted">{n(u.sessions, 'session')}, <span title={`${num.format(u.tokens)} tokens`}>{short.format(u.tokens)}</span> tokens</span>
                     </li>
                 ))}
             </ul>

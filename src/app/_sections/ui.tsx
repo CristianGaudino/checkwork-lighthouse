@@ -46,5 +46,13 @@ export const Dot = ({ light, className = '' }: { light: Light | null; className?
     <span role="img" aria-label={light ? SAID[light] : 'Not known'} className={`inline-block size-2 shrink-0 rounded-full ${light ? LIGHT[light] : 'bg-fg-muted/50'} ${className}`} />
 );
 
+/** Something on its way: three dots taking turns, beside the word that says what. */
+export const Dots = () => <span aria-hidden className="dots ml-1.5 align-middle"><i /><i /><i /></span>;
+
+/** A grey stand-in for text or a row while the real one loads. */
+export const Bone = ({ className = '' }: { className?: string }) => <span aria-hidden className={`block animate-shimmer rounded-md bg-surface ${className}`} />;
+
 export const num = new Intl.NumberFormat('en-IE');
+/** Big counts, like tokens: 1.2M rather than 1,234,567. */
+export const short = new Intl.NumberFormat('en-IE', { notation: 'compact', maximumFractionDigits: 1 });
 export const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;

@@ -1,4 +1,5 @@
 import { requireAdmin } from '@/lib/access';
+import { Gate } from '../_sections/Gate';
 import { domainOf } from '@/lib/domains';
 import { INCLUDED } from '@/lib/minutes';
 import { loadCosts, loadNeon, loadToday } from '../_data';
@@ -13,7 +14,11 @@ const date = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'short', 
 type Row = { label: string; value: string; note?: string; href: string };
 
 /** What the sites cost to run: money where the service says it, use where it only says that, and when each domain renews. */
-export default async function Costs() {
+export default function Page() {
+    return <Gate><Costs /></Gate>;
+}
+
+async function Costs() {
     await requireAdmin();
     const [t, costs, neon] = await Promise.all([loadToday(), loadCosts(), loadNeon()]);
     const m = t.usage.minutes;

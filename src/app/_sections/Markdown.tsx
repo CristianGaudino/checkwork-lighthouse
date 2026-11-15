@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { Copy } from './Copy';
 
 /**
  * Just enough Markdown for Claude's replies: code blocks, inline code, bold, headings, lists and links, as React
@@ -49,7 +50,13 @@ export function Markdown({ text }: { text: string }) {
         <div className="grid min-w-0 gap-3 leading-relaxed wrap-anywhere">
             {blocks.map((block, i) => (i % 2
                 // Odd pieces sit between ``` fences
-                ? <pre key={i} className="overflow-x-auto rounded-xl bg-surface px-4 py-3 font-mono text-[13px] leading-snug wrap-normal">{block.replace(/\n$/, '')}</pre>
+                ? (
+                    <div key={i} className="group/code relative">
+                        <pre className="overflow-x-auto rounded-xl bg-surface px-4 py-3 font-mono text-[13px] leading-snug wrap-normal">{block.replace(/\n$/, '')}</pre>
+                        {/* Always there on a phone (no hover), on hover or focus on a computer */}
+                        <Copy text={block.replace(/\n$/, '')} className="absolute right-2 top-2 bg-surface pointer-fine:opacity-0 pointer-fine:group-hover/code:opacity-100 pointer-fine:focus:opacity-100" />
+                    </div>
+                )
                 : <Fragment key={i}>{prose(block, String(i))}</Fragment>))}
         </div>
     );

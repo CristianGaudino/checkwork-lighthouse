@@ -47,7 +47,7 @@ export function Palette({ jumps, local }: { jumps: Jump[]; local: boolean }) {
             ref={dialog}
             aria-label="Go to"
             onClick={e => { if (e.target === dialog.current) dialog.current.close(); }}
-            className="m-auto mt-[12vh] w-[min(36rem,calc(100vw-2rem))] rounded-2xl border border-line bg-canvas p-0 text-fg shadow-2xl shadow-black/40 backdrop:bg-black/50"
+            className="m-auto mt-[12vh] w-[min(36rem,calc(100vw-2rem))] animate-pop rounded-2xl border border-line bg-canvas p-0 text-fg shadow-2xl shadow-black/40 backdrop:bg-black/50"
         >
             <input
                 autoFocus

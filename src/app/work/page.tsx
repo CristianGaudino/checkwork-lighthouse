@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { Gate } from '../_sections/Gate';
 import { requireAdmin } from '@/lib/access';
 import { PROJECTS } from '../../../lighthouse.config';
 import { loadToday } from '../_data';
@@ -12,7 +13,11 @@ export const metadata = { title: 'Work' };
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v.slice(0, 2000) : undefined);
 
-export default async function Work(props: PageProps<'/work'>) {
+export default function Page(props: PageProps<'/work'>) {
+    return <Gate><Work {...props} /></Gate>;
+}
+
+async function Work(props: PageProps<'/work'>) {
     await requireAdmin();
     // A task's File an issue link fills the form in; the action checks every field again
     const q = await props.searchParams;

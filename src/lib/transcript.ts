@@ -92,6 +92,20 @@ export function placeOf(tail: string): { cwd: string | null; mode: string | null
     return { cwd: cwd && JSON.parse(`"${cwd}"`), mode: last(/"permissionMode":"([a-zA-Z]+)"/g) };
 }
 
+/** The last `bytes` of a file, as text: where a session's title, state, folder and mode are. */
+export async function readTail(file: string, bytes = 512 * 1024): Promise<{ text: string; size: number; mtimeMs: number }> {
+    const { open } = await import('node:fs/promises');
+    const handle = await open(file, 'r');
+    try {
+        const { size, mtimeMs } = await handle.stat();
+        const length = Math.min(size, bytes);
+        const { buffer } = await handle.read(Buffer.alloc(length), 0, length, size - length);
+        return { text: buffer.toString('utf8'), size, mtimeMs };
+    } finally {
+        await handle.close();
+    }
+}
+
 const CHUNK = 2 * 1024 * 1024, BACK_MAX = 24 * 1024 * 1024, AHEAD_MAX = 8 * 1024 * 1024, WANT = 80;
 
 /**
@@ -100,7 +114,7 @@ const CHUNK = 2 * 1024 * 1024, BACK_MAX = 24 * 1024 * 1024, AHEAD_MAX = 8 * 1024
  * range they cover, always on line boundaries, so the next call carries on exactly. `reset`: the file shrank (a new
  * transcript under the same id), so the page should start over.
  */
-export async function readTranscript(file: string, at: { before?: number; after?: number }): Promise<{ entries: Entry[]; start: number; end: number; reset?: boolean }> {
+export async function readTranscript(file: string, at: { before?: number; after?: number }): Promise<{ entries: Entry[]; start: number; end: number; size: number; reset?: boolean }> {
     const { open } = await import('node:fs/promises');
     const handle = await open(file, 'r');
     try {
@@ -111,7 +125,7 @@ export async function readTranscript(file: string, at: { before?: number; after?
             return buf;
         };
         if (at.after !== undefined) {
-            if (at.after > size) return { entries: [], start: 0, end: 0, reset: true };
+            if (at.after > size) return { entries: [], start: 0, end: 0, size, reset: true };
             // A burst bigger than this is skipped to its last part; the page can still scroll up for the rest
             const from = Math.max(at.after, size - AHEAD_MAX);
             const buf = await read(from, size);
@@ -119,7 +133,7 @@ export async function readTranscript(file: string, at: { before?: number; after?
             const cut = buf.lastIndexOf(0x0a) + 1;
             const lines = buf.subarray(0, cut).toString('utf8').split('\n');
             if (from > at.after) lines.shift();
-            return { entries: parseLines(lines), start: at.after, end: from + cut };
+            return { entries: parseLines(lines), start: at.after, end: from + cut, size };
         }
         let end = Math.min(at.before ?? size, size);
         if (at.before === undefined) {
@@ -139,7 +153,7 @@ export async function readTranscript(file: string, at: { before?: number; after?
             start = from + nl + 1;
             chunk = CHUNK;
         }
-        return { entries, start, end };
+        return { entries, start, end, size };
     } finally {
         await handle.close();
     }

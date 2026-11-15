@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { Gate } from '../../_sections/Gate';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/access';
 import { readSessions } from '@/lib/claude';
@@ -28,7 +29,12 @@ export async function generateMetadata(props: PageProps<'/projects/[repo]'>) {
 }
 
 /** Everything about one project on one page: how its site is doing, what it needs, its board, and this PC's side of it. */
-export default async function Project(props: PageProps<'/projects/[repo]'>) {
+export default async function Page(props: PageProps<'/projects/[repo]'>) {
+    if (find((await props.params).repo) < 0) notFound();
+    return <Gate><Project {...props} /></Gate>;
+}
+
+async function Project(props: PageProps<'/projects/[repo]'>) {
     await requireAdmin();
     const i = find((await props.params).repo);
     if (i < 0) notFound();
