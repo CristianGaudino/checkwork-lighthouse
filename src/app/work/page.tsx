@@ -3,11 +3,11 @@ import { Gate } from '../_sections/Gate';
 import { requireAdmin } from '@/lib/access';
 import { PROJECTS } from '../../../lighthouse.config';
 import { loadToday } from '../_data';
-import { newIssue } from '../act';
+import { newIssue, wakeAll } from '../act';
 import { NewIssue } from '../_sections/Act';
 import { Board } from '../_sections/Board';
 import { Tasks } from '../_sections/Tasks';
-import { PageTitle, Problem, Section } from '../_sections/ui';
+import { link, n, PageTitle, Problem, Section } from '../_sections/ui';
 
 export const metadata = { title: 'Work' };
 
@@ -30,6 +30,11 @@ async function Work(props: PageProps<'/work'>) {
             {[t.problem, t.uptime.problem].filter(Boolean).map(text => <Problem key={text}>{text}</Problem>)}
             <div className="mt-10">
                 {t.tasks.length > 0 && <Section title="To do"><Tasks tasks={t.tasks} local={local} /></Section>}
+                {t.snoozed > 0 && (
+                    <form action={wakeAll} className="mt-3 text-sm text-fg-muted">
+                        {n(t.snoozed, 'task')} snoozed. <button type="submit" className={`${link} text-fg`}>Show {t.snoozed === 1 ? 'it' : 'them'} again</button>
+                    </form>
+                )}
                 <NewIssue action={newIssue} repos={PROJECTS.map(p => ({ repo: p.repo, name: p.name }))} start={start} />
                 <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
                     <Board local={local} />

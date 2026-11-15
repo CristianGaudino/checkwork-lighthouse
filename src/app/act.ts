@@ -1,12 +1,15 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import { requireAdmin } from '@/lib/access';
-import { approve, checkBatch, checkIssue, checkNumber, checkRepo, checkSha, checkWorkflow, createIssue, merge, mergeAll, rerunFailed, runWorkflow, type ActResult } from '@/lib/act';
+import { approve, checkBatch, checkBump, checkIssue, checkNumber, checkRepo, checkSha, checkWorkflow, createIssue, merge, mergeAll, rerunFailed, runWorkflow, type ActResult } from '@/lib/act';
 import { forgetAll } from '@/lib/memo';
+import { readSnoozed, snooze, SNOOZE_COOKIE, SNOOZE_DAYS } from '@/lib/snooze';
 
 /**
- * The buttons that change something on GitHub: approve, merge, merge a Dependabot batch, new issue, re-run, run deploy. Reachable by a direct POST like any server action, so each one checks the
+ * The buttons that change something on GitHub: approve, merge, merge a Dependabot batch, new issue, re-run, run deploy,
+ * cut a release. Snoozing changes only this browser's cookie. Reachable by a direct POST like any server action, so each one checks the
  * Access login again and checks every field from the form (src/lib/act.ts).
  */
 
@@ -73,4 +76,31 @@ export async function runDeploy(_prev: ActResult, form: FormData): Promise<ActRe
     const repo = checkRepo(form.get('repo')), workflow = checkWorkflow(form.get('workflow'));
     if (!repo || !workflow) return { error: 'Unknown workflow.' };
     return done(await runWorkflow(token, repo, workflow));
+}
+
+/** Cuts a release: the repo's release.yml with the bump picked, which tags main and deploys that tag. */
+export async function runRelease(_prev: ActResult, form: FormData): Promise<ActResult> {
+    await requireAdmin();
+    const token = process.env.GITHUB_WRITE_TOKEN;
+    if (!token) return NO_TOKEN;
+    const repo = checkRepo(form.get('repo')), bump = checkBump(form.get('bump'));
+    if (!repo || !bump) return { error: 'Unknown release.' };
+    return done(await runWorkflow(token, repo, 'release.yml', { bump }));
+}
+
+/** Hides a task for a day or a week, in this browser. Setting the cookie re-renders the page without it. */
+export async function snoozeTask(form: FormData) {
+    await requireAdmin();
+    const key = form.get('key'), days = Number(form.get('days'));
+    if (typeof key !== 'string' || !key || key.length > 300 || !(SNOOZE_DAYS as readonly number[]).includes(days)) return;
+    const store = await cookies();
+    const value = JSON.stringify(snooze(readSnoozed(store.get(SNOOZE_COOKIE)?.value), key, days));
+    // Outlives the longest snooze by a day; httpOnly, since only the server reads it
+    store.set(SNOOZE_COOKIE, value, { httpOnly: true, sameSite: 'lax', path: '/', secure: process.env.NODE_ENV !== 'development', maxAge: 8 * 86_400 });
+}
+
+/** Shows every snoozed task again. */
+export async function wakeAll() {
+    await requireAdmin();
+    (await cookies()).delete(SNOOZE_COOKIE);
 }

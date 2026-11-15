@@ -1,12 +1,14 @@
 import 'server-only';
 import { cache } from 'react';
+import { cookies } from 'next/headers';
+import { canSnooze, readSnoozed, SNOOZE_COOKIE } from '@/lib/snooze';
 import { fetchRepos, fetchRuns, type PullRequest, type RepoStatus } from '@/lib/github';
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes';
 import { fetchAnalytics, workerTasks, type Analytics as AnalyticsData } from '@/lib/cloudflare';
 import { fetchNeon, type NeonUsage } from '@/lib/neon';
 import { fetchDeployed, fetchLive, liveState, type LiveState } from '@/lib/live';
-import { ago, buildBoard, lightOf, mainTask, type Task } from '@/lib/today';
+import { ago, buildBoard, lightOf, mainTask, taskKey, type Task } from '@/lib/today';
 import { memo, MINUTE } from '@/lib/memo';
 import { alertTask, fetchAlerts, type Alerts } from '@/lib/security';
 import { domainOf, domainTasks, fetchExpiry } from '@/lib/domains';
@@ -237,5 +239,8 @@ export const loadToday = cache(async function loadToday() {
         p, live: live[i], worker: rows[i].worker, light: lightOf(tasks.filter(t => t.project === p.name)),
         alerts: security.alerts?.[i], expires: domains.get(domainOf(p.site)) ?? null,
     }));
-    return { repos, problem, uptime, usage, analytics, deploys, security, tasks, rows, sites };
+    // Snoozed in this browser: out of every list and count, though a site's light still says how it is
+    const asleep = readSnoozed((await cookies()).get(SNOOZE_COOKIE)?.value);
+    const shown = tasks.filter(t => !(canSnooze(t.level) && Object.hasOwn(asleep, taskKey(t))));
+    return { repos, problem, uptime, usage, analytics, deploys, security, tasks: shown, snoozed: tasks.length - shown.length, rows, sites };
 });

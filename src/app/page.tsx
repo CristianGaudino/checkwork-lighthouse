@@ -30,11 +30,13 @@ async function Overview() {
     const monitored = t.sites.filter(s => s.p.uptime);
     const up = monitored.filter(s => s.p.uptime?.state === 'up').length;
     const behind = t.sites.filter(s => s.live?.state === 'behind').length;
-    // The same count as the tab title (src/lib/pulse.ts): tasks, plus Claude sessions that need you on this PC
+    // The same words as Work ("6 to do"), with Claude sessions said apart; the tab title counts both (src/lib/pulse.ts)
     const claude = sessions?.filter(s => needsYou(s)) ?? [];
-    const total = t.tasks.length + claude.length;
-    const heading = total ? `${n(total, 'thing needs', 'things need')} you` : t.problem ? 'Lighthouse' : 'Nothing needs you';
+    const waiting = claude.length > 0 && `${n(claude.length, 'Claude session')} waiting`;
+    const heading = t.tasks.length ? `${t.tasks.length} to do` : waiting || (t.problem ? 'Lighthouse' : 'Nothing needs you');
     const sub = [
+        t.tasks.length > 0 && waiting,
+        t.snoozed > 0 && `${t.snoozed} snoozed`,
         monitored.length > 0 && `${up} of ${monitored.length} sites up`,
         behind > 0 && `${behind} not running main`,
     ].filter(Boolean).join(', ');

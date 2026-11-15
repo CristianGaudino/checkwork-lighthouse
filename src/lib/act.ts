@@ -22,6 +22,9 @@ export function checkNumber(value: unknown): number | null {
 export const checkSha = (value: unknown): string | null => (typeof value === 'string' && /^[0-9a-f]{40}$/.test(value) ? value : null);
 /** A workflow file name, as GitHub lists them in .github/workflows. */
 export const checkWorkflow = (value: unknown): string | null => (typeof value === 'string' && /^[\w.-]+\.ya?ml$/.test(value) ? value : null);
+/** A release.yml bump, as its Run workflow menu offers them. */
+export const BUMPS = ['patch', 'minor', 'major'] as const;
+export const checkBump = (value: unknown): string | null => ((BUMPS as readonly string[]).includes(value as string) ? (value as string) : null);
 /** Dependabot PRs as the form sends them, "12:sha,13:sha": every one must check out, or none go. At most 20, as the page lists. */
 export function checkBatch(value: unknown): { number: number; sha: string }[] | null {
     if (typeof value !== 'string' || !value) return null;
@@ -84,10 +87,10 @@ export async function rerunFailed(token: string, repo: string, sha: string): Pro
     return { ok: `Running ${failed.length === 1 ? 'it' : `${failed.length} runs`} again`, href: `https://github.com/${OWNER}/${repo}/actions` };
 }
 
-/** Runs a repo's deploy workflow on main, as its Run workflow button does. */
-export async function runWorkflow(token: string, repo: string, workflow: string): Promise<ActResult> {
-    const r = await github(token, 'POST', `${repo}/actions/workflows/${workflow}/dispatches`, { ref: 'main' });
-    return r.status === 204 ? { ok: 'Deploy started', href: `https://github.com/${OWNER}/${repo}/actions/workflows/${workflow}` } : refused(r.status, r.json.message);
+/** Runs a repo's workflow on main, as its Run workflow button does: the deploy, or a release with its `inputs`. */
+export async function runWorkflow(token: string, repo: string, workflow: string, inputs?: Record<string, string>): Promise<ActResult> {
+    const r = await github(token, 'POST', `${repo}/actions/workflows/${workflow}/dispatches`, { ref: 'main', ...(inputs && { inputs }) });
+    return r.status === 204 ? { ok: inputs ? 'Release started' : 'Deploy started', href: `https://github.com/${OWNER}/${repo}/actions/workflows/${workflow}` } : refused(r.status, r.json.message);
 }
 
 /**
