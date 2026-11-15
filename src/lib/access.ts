@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { headers } from 'next/headers';
+import { cache } from 'react';
 
 type Jwk = JsonWebKey & { kid?: string };
 type Claims = { iss?: string; aud?: string | string[]; exp?: number; email?: string };
@@ -46,8 +47,11 @@ async function teamKeys(team: string): Promise<Jwk[]> {
     return keys;
 }
 
-/** The signed-in owner's email, or null. For the layout, which can't answer 404 itself: it loads the owner's data only when this says yes. */
-export async function adminEmail(): Promise<string | null> {
+/**
+ * The signed-in owner's email, or null. For the layout, which can't answer 404 itself: it loads the owner's data only when this says yes.
+ * Checked once per request (cache), however many layouts and pages ask.
+ */
+export const adminEmail = cache(async (): Promise<string | null> => {
     if (process.env.NODE_ENV === 'development') return 'dev@localhost';
     const team = process.env.ACCESS_TEAM_DOMAIN;
     const aud = process.env.ACCESS_AUD;
@@ -62,7 +66,7 @@ export async function adminEmail(): Promise<string | null> {
         }
     }
     return null;
-}
+});
 
 /**
  * Call first in every admin page and action. A signed-in owner gets their email; anyone else gets a 404, so the page looks like it

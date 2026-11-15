@@ -8,7 +8,8 @@ import { ClaudeShell } from '../_sections/ClaudeShell';
  * PC: a layout can't answer 404, so it hands over to the page, which does.
  */
 export default async function ClaudeLayout({ children }: LayoutProps<'/claude'>) {
-    const [owner, sessions, repos] = await Promise.all([adminEmail(), readSessions(), listRepos()]);
-    if (!owner || !sessions || !repos) return children;
+    if (!(await adminEmail())) return children;
+    const [sessions, repos] = await Promise.all([readSessions(), listRepos()]);
+    if (!sessions || !repos) return children;
     return <ClaudeShell sessions={sessions} repos={repos}>{children}</ClaudeShell>;
 }

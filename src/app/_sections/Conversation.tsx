@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Session } from '@/lib/claude';
 import type { Ask, RunView } from '@/lib/runner';
 import type { Entry } from '@/lib/transcript';
@@ -138,6 +139,11 @@ export function Conversation({ id }: { id: string }) {
     const results = new Map(entries.flatMap(e => (e.kind === 'result' ? [[e.toolId, e] as const] : [])));
     const shown = entries.filter(e => e.kind !== 'result');
     const run = info?.run, session = info?.session;
+    // The list beside this stays put between sessions (the layout's), so it's brought up to date when this one opens or
+    // changes state: a session just started appears in it, and a reply turns "Your turn" into "Working" there too
+    const router = useRouter();
+    const state = session?.state;
+    useEffect(() => { if (state) router.refresh(); }, [state, router]);
     const working = run?.state === 'working' || (!run && session?.state === 'working') || outbox.length > 0;
     // How much of the history is on the page, by bytes: tool output makes it a rough guide, which is all it needs to be
     const seen = range && range.size ? Math.round(((range.size - range.start) / range.size) * 100) : 100;
