@@ -67,7 +67,7 @@ export function ClaudeToday({ usage }: { usage: { repo: string; tokens: number; 
                 {usage.map(u => (
                     <li key={u.repo} className="flex items-center justify-between gap-4 px-4 py-2">
                         <span className="flex min-w-0 items-center gap-3"><ProjectIcon project={u.repo} /><span className="truncate">{u.repo}</span></span>
-                        <span className="text-fg-muted">{n(u.sessions, 'session')}, <span title={`${num.format(u.tokens)} tokens`}>{short.format(u.tokens)}</span> tokens</span>
+                        <span className="shrink-0 text-fg-muted">{n(u.sessions, 'session')}, <span title={`${num.format(u.tokens)} tokens`}>{short.format(u.tokens)}</span> tokens</span>
                     </li>
                 ))}
             </ul>

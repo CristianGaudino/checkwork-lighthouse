@@ -17,7 +17,7 @@ export function ClaudeShell({ sessions, repos, children }: { sessions: Session[]
         <>
             <h1 className="text-lg font-semibold">Claude</h1>
             <NewSession repos={repos} />
-            <ul className="min-h-0 flex-1 overflow-y-auto">
+            <ul className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 {sessions.map(s => (
                     <li key={s.id}>
                         <SessionLink id={s.id}>

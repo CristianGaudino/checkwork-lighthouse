@@ -204,7 +204,8 @@ export function Conversation({ id }: { id: string }) {
             </header>
 
             <div className="relative min-h-0 flex-1">
-                <div ref={scroller} onScroll={e => onScroll(e.currentTarget)} className="h-full overflow-y-auto py-4">
+                {/* relative: screen-reader-only text is positioned, and without it lands against the page, making the page itself thousands of pixels tall */}
+                <div ref={scroller} onScroll={e => onScroll(e.currentTarget)} className="relative h-full overflow-y-auto overscroll-contain py-4">
                     {range && range.start > 0 && (
                         <p className="pb-4 text-center text-xs text-fg-muted tabular-nums">
                             {older ? <>Loading earlier messages<Dots /></> : <button type="button" onClick={loadOlder} className="underline-offset-4 hover:underline">Load earlier messages</button>}
