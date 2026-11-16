@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OWNER, type Project } from '../../lighthouse.config';
+import { envNames } from './secrets';
 
 const Pr = z.object({
     number: z.number(),
@@ -25,6 +26,7 @@ const Repo = z.object({
     // null when the repo has no workflows folder; a file's text is null when GitHub calls it binary
     workflows: z.object({ entries: z.array(z.object({ name: z.string(), object: z.object({ text: z.string().nullable().optional() }).nullable().optional() })) }).nullable().optional(),
     wrangler: z.object({ text: z.string().nullable() }).nullable().optional(),
+    env: z.object({ text: z.string().nullable() }).nullable().optional(),
     main: z.object({
         history: z.object({ nodes: z.array(z.object({ committedDate: z.string(), messageHeadline: z.string() })) }),
         oid: z.string().optional(),
@@ -62,10 +64,11 @@ export type PullRequest = {
  * file of one that can also be run by hand (workflow_dispatch), for the Run deploy button.
  * `main`: when main's newest commit and its recent merges landed, newest first, to tell what the live Worker is missing,
  * and how the newest commit's checks went ('none' too when the token can't see them: see fetchRuns).
+ * `envNames`: the names .env.example sets, to check the Worker has them (secrets.ts).
  */
 export type RepoStatus = {
     prs: PullRequest[]; release: { tag: string; date: string | null; unreleased: number | null } | null; releasesDeploy: boolean; checksPrs: boolean; deploysWorker: boolean; deployWorkflow: string | null; isPrivate: boolean;
-    worker: string | null; versions: Record<string, string>; main: { sha: string | null; head: string | null; merges: string[]; checks: PullRequest['checks'] };
+    worker: string | null; versions: Record<string, string>; envNames: string[]; main: { sha: string | null; head: string | null; merges: string[]; checks: PullRequest['checks'] };
 } | null;
 
 // Rollup states: SUCCESS, FAILURE, ERROR, PENDING, EXPECTED
@@ -84,6 +87,7 @@ const FIELDS = `
   pkg: object(expression: "HEAD:package.json") { ... on Blob { text } }
   workflows: object(expression: "HEAD:.github/workflows") { ... on Tree { entries { name object { ... on Blob { text } } } } }
   wrangler: object(expression: "HEAD:wrangler.jsonc") { ... on Blob { text } }
+  env: object(expression: "HEAD:.env.example") { ... on Blob { text } }
   main: object(expression: "main") { ... on Commit { oid statusCheckRollup { state } history(first: 30) { nodes { committedDate messageHeadline } } } }`;
 
 /** One GraphQL query covers every repo (aliases r0, r1...), so the page costs one GitHub request however many projects there are. */
@@ -118,6 +122,7 @@ export function parseRepo(raw: unknown): RepoStatus {
         isPrivate: repo.isPrivate ?? true,
         worker: workerName(repo.wrangler?.text),
         versions: readVersions(repo.pkg?.text),
+        envNames: envNames(repo.env?.text),
         main: {
             sha: repo.main?.oid ?? null,
             head: repo.main?.history.nodes[0]?.committedDate ?? null,
@@ -152,22 +157,42 @@ const Runs = z.object({ workflow_runs: z.array(z.object({ status: z.string().nul
 /** Run conclusions that count as failed checks, here and for the Re-run button (act.ts). */
 export const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
 
+/** The first that failed, else the first cancelled: a cancelled run never finished, so it can't count as passing either. */
+export const firstBroken = <T extends { conclusion: string | null }>(xs: T[]) =>
+    xs.find(x => FAILED.has(x.conclusion ?? '')) ?? xs.find(x => x.conclusion === 'cancelled');
+
+const SKIPPED = new Set(['skipped', 'neutral', 'stale']);
+/** One check's outcome, from a run's or check run's status and conclusion, or a commit status's state. The one rule for every page. */
+export function checkState(status: string, conclusion: string | null): 'passing' | 'failing' | 'running' | 'skipped' {
+    const c = (conclusion ?? status).toLowerCase();
+    // Cancelled never finished: failing, so nothing merges on a CI run someone stopped
+    if (FAILED.has(c) || c === 'error' || c === 'action_required' || c === 'cancelled') return 'failing';
+    if (c === 'success') return 'passing';
+    if (SKIPPED.has(c)) return 'skipped';
+    return 'running';
+}
+
 /** How a commit's workflow runs went: any failure fails it, then any still going means running. */
 export function runsChecks(runs: z.infer<typeof Runs>['workflow_runs']): PullRequest['checks'] {
     if (!runs.length) return 'none';
-    if (runs.some(r => FAILED.has(r.conclusion ?? ''))) return 'failing';
-    return runs.some(r => r.status !== 'completed') ? 'running' : 'passing';
+    const states = runs.map(r => checkState(r.status ?? '', r.conclusion));
+    if (states.includes('failing')) return 'failing';
+    return states.includes('running') ? 'running' : 'passing';
 }
+
+/** A GET on one of OWNER's repos (`path` starts with the repo name), as GitHub's REST API answers it. */
+export const githubRest = (token: string, path: string, init?: RequestInit) => fetch(`https://api.github.com/repos/${OWNER}/${path}`, {
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
+    signal: AbortSignal.timeout(10_000),
+    ...init,
+});
 
 /**
  * How one commit's checks went, from its Actions runs, for where GraphQL gave none: a fine-grained token can't read
  * check results on a private repo, but it can read Actions. Throws when GitHub refuses.
  */
 export async function fetchRuns(token: string, repo: string, sha: string): Promise<PullRequest['checks']> {
-    const res = await fetch(`https://api.github.com/repos/${OWNER}/${repo}/actions/runs?head_sha=${sha}&per_page=20`, {
-        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
-        signal: AbortSignal.timeout(10_000),
-    });
+    const res = await githubRest(token, `${repo}/actions/runs?head_sha=${sha}&per_page=20`);
     if (!res.ok) throw new Error(`GitHub Actions runs for ${repo}: ${res.status}`);
     return runsChecks(Runs.parse(await res.json()).workflow_runs);
 }

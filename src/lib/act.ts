@@ -78,7 +78,12 @@ export async function createIssue(token: string, repo: string, issue: { title: s
 export async function rerunFailed(token: string, repo: string, sha: string): Promise<ActResult> {
     const list = await github(token, 'GET', `${repo}/actions/runs?head_sha=${sha}&per_page=20`);
     if (list.status !== 200) return refused(list.status, list.json.message);
-    const failed = (list.json.workflow_runs ?? []).filter(r => FAILED.has(r.conclusion ?? ''));
+    const runs = list.json.workflow_runs ?? [];
+    // The failed runs; only when none failed, the cancelled ones (a cancelled run fails the checks too, see checkState)
+    const broken = runs.filter(r => FAILED.has(r.conclusion ?? ''));
+    const failed = broken.length ? broken : runs.filter(r => r.conclusion === 'cancelled');
+    // A run waiting for a maintainer's approval reads as failing (checkState) but has nothing to re-run
+    if (!failed.length && runs.some(r => r.conclusion === 'action_required')) return { error: 'It is waiting for approval on GitHub, not failing. Approve the run there.' };
     if (!failed.length) return { error: 'No failed runs on that commit. They may already be running again.' };
     for (const run of failed) {
         const r = await github(token, 'POST', `${repo}/actions/runs/${run.id}/rerun-failed-jobs`);

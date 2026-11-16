@@ -3,9 +3,11 @@ import { listRepos } from '@/lib/local';
 import { canSnooze, SNOOZE_DAYS } from '@/lib/snooze';
 import { taskKey, type Task } from '@/lib/today';
 import { OWNER, PROJECTS } from '../../../lighthouse.config';
+import { withFailures } from '../_data';
 import { approvePr, mergeBatch, mergePr, rerun, runDeploy, runRelease, snoozeTask } from '../act';
 import { incidentHelp } from '../ask';
 import { ActButton, ReleaseButton } from './Act';
+import { FailureDetail } from './Failure';
 import { Ask } from './Ask';
 import { StartClaude } from './NewSession';
 import { ProjectIcon } from './ProjectIcon';
@@ -28,12 +30,13 @@ const folder = (repo: string) => `${process.cwd().replace(/[\\/][^\\/]+$/, '')}/
 const issueHref = (t: Task, repo: string) => `/work?${new URLSearchParams({ repo, title: [t.action, t.title].filter(Boolean).join(' '), body: `${t.detail}\n\n${t.href}` })}#new-issue`;
 
 /**
- * The to-do list. `compact` (the Overview): one line each, no buttons. Otherwise each task carries what can be done
+ * The to-do list; a PR's task opens its page here (#57), the rest go where the work is. `compact` (the Overview): one line each, no buttons. Otherwise each task carries what can be done
  * from here: Approve and Merge for a PR, Merge passing for a Dependabot batch, Re-run for failed checks, Run deploy,
  * Release, the incident helper for a site that is down, a new issue, Snooze, and, when `local` (`npm run dev`), Claude:
  * a session on the Claude page for a repo on this PC, with the VS Code link beside it.
  */
-export async function Tasks({ tasks, compact, local }: { tasks: Task[]; compact?: boolean; local?: boolean }) {
+export async function Tasks({ tasks: listed, compact, local }: { tasks: Task[]; compact?: boolean; local?: boolean }) {
+    const tasks = compact ? listed : await withFailures(listed);
     const here = local && !compact ? await listRepos() : null;
     // On this PC the session runs on the Claude page; elsewhere (or a repo not cloned here) VS Code opens it
     const claude = (repo: string, label: string, text: string, title: string, strong?: boolean) => (here?.includes(repo)
@@ -41,9 +44,9 @@ export async function Tasks({ tasks, compact, local }: { tasks: Task[]; compact?
         : <a className={`${link} ${strong ? 'text-fg' : ''}`} href={askHref(`Work in ${folder(repo)}. ${text}`)} title={title}>{label}</a>);
     return (
         <ul className={panel}>
-            {tasks.map(t => { const repo = repoOf(t.project); return (
+            {tasks.map(t => { const repo = repoOf(t.project); const page = t.pr && `/projects/${t.pr.repo}/pr/${t.pr.number}`; return (
                 <li key={taskKey(t)} className={`grid gap-x-4 gap-y-1 px-4 sm:grid-cols-[minmax(0,1fr)_auto] ${compact ? 'py-3' : 'py-4'}`}>
-                    <a {...ext} href={t.href} className="group flex min-w-0 items-start gap-3 text-[15px]">
+                    <a {...(page ? {} : ext)} href={page || t.href} className="group flex min-w-0 items-start gap-3 text-[15px]">
                         {/* mt-2 centres the light on the first line */}
                         <Dot light={t.level === 1 ? 'bad' : 'warn'} className="mt-2" />
                         <span className={`min-w-0 group-hover:underline group-hover:underline-offset-4 ${compact ? 'truncate' : ''}`}>
@@ -68,6 +71,7 @@ export async function Tasks({ tasks, compact, local }: { tasks: Task[]; compact?
                                     </form>
                                 )}
                             </div>
+                            {t.failure && <FailureDetail failure={t.failure} />}
                             {(t.rerun || t.dispatch || t.batch || t.release) && (
                                 <div className="flex flex-wrap gap-3">
                                     {t.rerun && <ActButton action={rerun} label="Re-run failed jobs" fields={t.rerun} />}

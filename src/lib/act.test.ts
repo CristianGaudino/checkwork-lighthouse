@@ -1,5 +1,7 @@
-import { expect, it } from 'vitest';
-import { checkIssue, checkNumber, checkRepo, checkSha } from './act';
+import { afterEach, expect, it, vi } from 'vitest';
+import { checkIssue, checkNumber, checkRepo, checkSha, rerunFailed } from './act';
+
+afterEach(() => vi.unstubAllGlobals());
 
 it('only lets a configured repo, a positive whole PR number and a full commit id through', () => {
     expect(checkRepo('vintage')).toBe('vintage');
@@ -15,4 +17,14 @@ it('trims an issue, defaults an unknown type to Task, and refuses an empty or ov
     expect(checkIssue({ title: 'X', body: null, type: 'Epic' })).toEqual({ title: 'X', body: '', type: 'Task' });
     expect(checkIssue({ title: '   ', body: '', type: 'Bug' })).toBeNull();
     expect(checkIssue({ title: 'x'.repeat(257), body: '', type: 'Bug' })).toBeNull();
+});
+
+it('says a run waiting for approval has nothing to re-run, and re-runs nothing', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+        calls.push(`${init?.method} ${url}`);
+        return new Response(JSON.stringify({ workflow_runs: [{ id: 1, conclusion: 'action_required' }] }));
+    });
+    expect((await rerunFailed('t', 'vintage', 'a'.repeat(40))).error).toMatch(/waiting for approval/);
+    expect(calls.filter(c => c.startsWith('POST'))).toEqual([]);
 });

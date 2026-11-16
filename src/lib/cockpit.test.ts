@@ -117,6 +117,13 @@ describe('writes to GitHub', () => {
         expect(calls.filter(c => c.startsWith('POST'))).toEqual(['POST vintage/actions/runs/1/rerun-failed-jobs']);
     });
 
+    it('re-runs cancelled runs when none failed, since they fail the checks too', async () => {
+        stub((method, url) => method === 'GET'
+            ? answer(200, { workflow_runs: [{ id: 2, conclusion: 'cancelled' }, { id: 3, conclusion: 'success' }] })
+            : url.includes('/runs/2/') ? answer(201) : answer(500));
+        expect(await rerunFailed('t', 'vintage', 'a'.repeat(40))).toMatchObject({ ok: 'Running it again' });
+    });
+
     it('merges what it can of a batch and names the rest', async () => {
         stub((_m, url) => (url.includes('/pulls/4/') ? answer(409, { message: 'Head branch was modified' }) : answer(200)));
         expect(await mergeAll('t', 'vintage', [{ number: 3, sha: 'a' }, { number: 4, sha: 'b' }, { number: 5, sha: 'c' }]))

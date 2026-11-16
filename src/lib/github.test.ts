@@ -71,4 +71,7 @@ it("reads main's checks from its Actions runs: any failure fails, then anything 
     expect(runsChecks([run('completed', 'success'), run('in_progress', null)])).toBe('running');
     expect(runsChecks([run('completed', 'success'), run('completed', 'skipped')])).toBe('passing');
     expect(runsChecks([])).toBe('none');
+    // Waiting for approval counts as failing here as on the PR page, so Merge never sits beside a red check
+    expect(runsChecks([run('completed', 'action_required')])).toBe('failing');
+    expect(runsChecks([run('completed', 'success'), run('completed', 'cancelled')])).toBe('failing');
 });
