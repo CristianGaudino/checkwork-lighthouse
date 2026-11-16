@@ -3,6 +3,7 @@ import { listRepos } from '@/lib/local';
 import { canSnooze, SNOOZE_DAYS } from '@/lib/snooze';
 import { taskKey, type Task } from '@/lib/today';
 import { OWNER, PROJECTS } from '../../../lighthouse.config';
+import { withFailures } from '../_data';
 import { approvePr, mergeBatch, mergePr, rerun, runDeploy, runRelease, snoozeTask } from '../act';
 import { incidentHelp } from '../ask';
 import { ActButton, ReleaseButton } from './Act';
@@ -34,7 +35,8 @@ const issueHref = (t: Task, repo: string) => `/work?${new URLSearchParams({ repo
  * Release, the incident helper for a site that is down, a new issue, Snooze, and, when `local` (`npm run dev`), Claude:
  * a session on the Claude page for a repo on this PC, with the VS Code link beside it.
  */
-export async function Tasks({ tasks, compact, local }: { tasks: Task[]; compact?: boolean; local?: boolean }) {
+export async function Tasks({ tasks: listed, compact, local }: { tasks: Task[]; compact?: boolean; local?: boolean }) {
+    const tasks = compact ? listed : await withFailures(listed);
     const here = local && !compact ? await listRepos() : null;
     // On this PC the session runs on the Claude page; elsewhere (or a repo not cloned here) VS Code opens it
     const claude = (repo: string, label: string, text: string, title: string, strong?: boolean) => (here?.includes(repo)

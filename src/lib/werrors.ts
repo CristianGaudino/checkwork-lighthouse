@@ -16,6 +16,7 @@ const Result = z.object({
 });
 
 const ERROR = '$metadata.error', SERVICE = '$metadata.service';
+// shortcut: the query keeps the top 100 messages; a Worker with more distinct ones (ids in messages) could call an old one new. Fine at this traffic.
 
 /** The query body: errors only, counted by `groupBy` fields, over [from, to). */
 export const errorQuery = (from: number, to: number, groupBy: string[], service?: string) => ({
@@ -38,17 +39,9 @@ export function rowsOf(raw: unknown): { by: Record<string, string>; count: numbe
     }));
 }
 
-/** Per Worker, its top five messages, each marked fresh when it is missing from `before` (what that Worker logged before its deploy). */
-export function topErrors(recent: ReturnType<typeof rowsOf>, before: Map<string, Set<string>>): Map<string, WorkerError[]> {
-    const out = new Map<string, WorkerError[]>();
-    for (const r of recent) {
-        const worker = r.by[SERVICE], message = r.by[ERROR];
-        if (!worker || !message) continue;
-        const list = out.get(worker) ?? [];
-        if (list.length < 5) list.push({ message, count: r.count, fresh: before.has(worker) && !before.get(worker)!.has(message) });
-        out.set(worker, list);
-    }
-    return out;
+/** The top five messages, each marked fresh when it is missing from `before` (what the Worker logged before its deploy; null when unknown). */
+export function topErrors(recent: ReturnType<typeof rowsOf>, before: Set<string> | null): WorkerError[] {
+    return recent.flatMap(r => (r.by[ERROR] ? [{ message: r.by[ERROR], count: r.count, fresh: before !== null && !before.has(r.by[ERROR]) }] : [])).slice(0, 5);
 }
 
 const DAY = 86_400_000;
@@ -56,10 +49,10 @@ const DAY = 86_400_000;
 const KEPT = 3 * DAY;
 
 /**
- * One query for the last day across every Worker, then, for each Worker with errors, one for the time before its latest
- * deploy (`deployed`, from fetchLive). Throws when Cloudflare refuses: the page then shows a setup note.
+ * One Worker's errors over the last day, by message, and, when it was deployed within the logs' reach, what it logged
+ * before that deploy. Asked per Worker, so a busy one's many messages never crowd out a quiet one's. Throws when Cloudflare refuses.
  */
-export async function fetchWorkerErrors(token: string, account: string, deployed: Map<string, string>, now = Date.now()): Promise<Map<string, WorkerError[]>> {
+export async function fetchWorkerErrors(token: string, account: string, worker: string, deployedAt: string | undefined, now = Date.now()): Promise<WorkerError[]> {
     const query = async (body: object) => {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/observability/telemetry/query`, {
             method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000),
@@ -67,13 +60,12 @@ export async function fetchWorkerErrors(token: string, account: string, deployed
         if (!res.ok) throw new Error(`Cloudflare observability: ${res.status}`);
         return rowsOf(await res.json());
     };
-    const recent = await query(errorQuery(now - DAY, now, [SERVICE, ERROR]));
-    const workers = [...new Set(recent.map(r => r.by[SERVICE]).filter(Boolean))];
-    const before = new Map(await Promise.all(workers.flatMap(w => {
-        const at = Date.parse(deployed.get(w) ?? '');
+    const at = Date.parse(deployedAt ?? '');
+    const [recent, before] = await Promise.all([
+        query(errorQuery(now - DAY, now, [ERROR], worker)),
         // Unknown deploy time, or one older than the logs reach: nothing to compare with, so nothing is called fresh
-        if (!(at > now - KEPT)) return [];
-        return [query(errorQuery(now - KEPT, at, [ERROR], w)).then(rows => [w, new Set(rows.map(r => r.by[ERROR]))] as const)];
-    })));
+        // At least a day of logs before the deploy, so an error that comes a few times a day isn't called new
+        at > now - KEPT + DAY ? query(errorQuery(now - KEPT, at, [ERROR], worker)).then(rows => new Set(rows.map(r => r.by[ERROR]))) : null,
+    ]);
     return topErrors(recent, before);
 }

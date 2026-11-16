@@ -8,7 +8,7 @@ export function FailureDetail({ failure: f }: { failure: Failure }) {
             <p className="text-fg-muted">
                 Failed at <span className="text-fg">{f.step ?? f.job}</span>{f.step && <> in {f.job}</>}, {f.workflow}. <a {...ext} className={link} href={f.href}>Job on GitHub</a>
             </p>
-            {f.notes.map(n => <p key={n} className="break-words font-mono text-xs text-bad">{n}</p>)}
+            {f.notes.map((n, i) => <p key={i} className="break-words font-mono text-xs text-bad">{n}</p>)}
             {f.log.length > 0 && (
                 <details className="min-w-0">
                     <summary className="cursor-pointer select-none text-fg-muted hover:text-fg">End of the log</summary>

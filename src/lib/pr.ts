@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { OWNER } from '../../lighthouse.config';
-import { FAILED, githubGraphql } from './github';
+import { checkState, githubGraphql, githubRest } from './github';
 
 /** One PR in full, for its page (#57): what changed, how its checks went, what reviewers said, and a preview if one was deployed. */
 export type Check = { name: string; state: 'passing' | 'failing' | 'running' | 'skipped'; href: string | null };
@@ -33,16 +33,6 @@ const query = (repo: string, number: number) => `{ repository(owner: ${JSON.stri
   comments(last: 20) { nodes { author { login } body createdAt url } }
 } } }`;
 
-const SKIPPED = new Set(['skipped', 'neutral', 'cancelled', 'stale']);
-/** A check run's or status's outcome, in the page's words. */
-export function checkState(status: string, conclusion: string | null): Check['state'] {
-    const c = (conclusion ?? status).toLowerCase();
-    if (FAILED.has(c) || c === 'error' || c === 'action_required') return 'failing';
-    if (c === 'success') return 'passing';
-    if (SKIPPED.has(c)) return 'skipped';
-    return 'running';
-}
-
 /** Separate from the fetch so it can be tested. null when GitHub has no such PR. */
 export function parsePr(raw: unknown): PrDetail | null {
     const pr = Pr.parse(raw);
@@ -73,15 +63,10 @@ export async function fetchPr(token: string, repo: string, number: number): Prom
     return parsePr((data.repository as { pullRequest?: unknown } | null)?.pullRequest ?? null);
 }
 
-const rest = (token: string, path: string) => fetch(`https://api.github.com/repos/${OWNER}/${path}`, {
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
-    signal: AbortSignal.timeout(10_000),
-});
-
 const Runs = z.object({ workflow_runs: z.array(z.object({ name: z.string().nullable(), status: z.string().nullable(), conclusion: z.string().nullable(), html_url: z.string() })) });
 /** The commit's Actions runs as checks, for where GraphQL gave none (a fine-grained token on a private repo). */
 export async function fetchActionChecks(token: string, repo: string, sha: string): Promise<Check[]> {
-    const res = await rest(token, `${repo}/actions/runs?head_sha=${sha}&per_page=20`);
+    const res = await githubRest(token, `${repo}/actions/runs?head_sha=${sha}&per_page=20`);
     if (!res.ok) throw new Error(`GitHub runs for ${repo}: ${res.status}`);
     return Runs.parse(await res.json()).workflow_runs.map(r => ({ name: r.name ?? 'Workflow', state: checkState(r.status ?? '', r.conclusion), href: r.html_url }));
 }
@@ -90,11 +75,11 @@ const Deployments = z.array(z.object({ id: z.number(), environment: z.string() }
 const Statuses = z.array(z.object({ state: z.string(), environment_url: z.string().nullable().optional() }));
 /** Where the commit was deployed outside production (a Vercel preview, say), or null. Asked apart: a token that can't read deployments costs only this. */
 export async function fetchPreview(token: string, repo: string, sha: string): Promise<string | null> {
-    const res = await rest(token, `${repo}/deployments?sha=${sha}&per_page=10`);
+    const res = await githubRest(token, `${repo}/deployments?sha=${sha}&per_page=10`);
     if (!res.ok) throw new Error(`GitHub deployments for ${repo}: ${res.status}`);
     const preview = Deployments.parse(await res.json()).find(d => !/production/i.test(d.environment));
     if (!preview) return null;
-    const statuses = await rest(token, `${repo}/deployments/${preview.id}/statuses?per_page=1`);
+    const statuses = await githubRest(token, `${repo}/deployments/${preview.id}/statuses?per_page=1`);
     if (!statuses.ok) throw new Error(`GitHub deployment statuses for ${repo}: ${statuses.status}`);
     const latest = Statuses.parse(await statuses.json())[0];
     return latest?.state === 'success' && latest.environment_url?.startsWith('https://') ? latest.environment_url : null;

@@ -1,5 +1,7 @@
-import { expect, it } from 'vitest';
-import { failureText, logTail, usefulNotes } from './failure';
+import { afterEach, expect, it, vi } from 'vitest';
+import { failureText, fetchFailure, logTail, usefulNotes } from './failure';
+
+afterEach(() => vi.unstubAllGlobals());
 
 it('keeps the log up to the last error, without timestamps, colours or groups', () => {
     const log = [
@@ -28,4 +30,28 @@ it('words the failure for Claude, short enough for a link', () => {
     const text = failureText({ workflow: 'CI', job: 'test', step: 'Run npm test', href: 'h', notes: ['n'], log: Array.from({ length: 200 }, () => 'x'.repeat(50)) });
     expect(text.startsWith('It failed in CI, job test, step Run npm test.\nn\nEnd of the log:\n')).toBe(true);
     expect(text.length).toBeLessThanOrEqual(1500);
+});
+
+it('picks the first failed run, its first failed job and step, and follows the log redirect without the token', async () => {
+    const asked: { url: string; auth: boolean }[] = [];
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+        asked.push({ url, auth: Boolean((init?.headers as Record<string, string> | undefined)?.authorization) });
+        if (url.includes('/actions/runs?')) return json({ workflow_runs: [{ id: 1, name: 'CI', conclusion: 'success' }, { id: 2, name: 'Deploy', conclusion: 'failure' }] });
+        if (url.includes('/runs/2/jobs')) return json({ jobs: [
+            { id: 10, name: 'lint', conclusion: 'success', html_url: 'j10', steps: [] },
+            { id: 11, name: 'build', conclusion: 'failure', html_url: 'j11', steps: [{ name: 'Setup', conclusion: 'success' }, { name: 'npm test', conclusion: 'failure' }] },
+        ] });
+        if (url.includes('/check-runs/11/annotations')) return json([{ message: 'boom', annotation_level: 'failure', path: 'a.ts', start_line: 3 }]);
+        if (url.includes('/jobs/11/logs')) return new Response(null, { status: 302, headers: { location: 'https://logs.example/11' } });
+        if (url === 'https://logs.example/11') return new Response('x\n##[error]it broke\nPost job cleanup.');
+        throw new Error(`unexpected ${url}`);
+    });
+    expect(await fetchFailure('t', 'r', 'sha')).toEqual({ workflow: 'Deploy', job: 'build', step: 'npm test', href: 'j11', notes: ['a.ts:3: boom'], log: ['x', 'Error: it broke'] });
+    expect(asked.find(a => a.url.startsWith('https://logs.example'))?.auth).toBe(false);
+});
+
+it('says nothing failed when no run did', async () => {
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ workflow_runs: [{ id: 1, name: 'CI', conclusion: 'success' }] })));
+    expect(await fetchFailure('t', 'r', 'sha')).toBeNull();
 });

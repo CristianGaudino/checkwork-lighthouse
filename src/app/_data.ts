@@ -172,16 +172,17 @@ const refusedBy = (error: unknown) => /: 40[13]$/.test(String(error instanceof E
 const logFailure = (what: string, error: unknown) => (refusedBy(error) ? console.warn : console.error)(what, error);
 
 /**
- * Why each failing commit failed (#56), onto its task and its Fix with Claude prompt. A finished run doesn't change, and a
- * re-run makes the checks 'running', so ten minutes is safe. Quiet on failure: the task still links to Actions.
+ * Why each failing commit failed (#56), onto its task and its Fix with Claude prompt. Only for full task lists (Work, a
+ * project), never in loadToday, so no other page waits on it. A minute, like the checks: a re-run that fails again shows
+ * its own step. Quiet on failure: the task still links to Actions.
  */
-async function withFailures(tasks: Task[]): Promise<Task[]> {
+export async function withFailures(tasks: Task[]): Promise<Task[]> {
     const token = process.env.GITHUB_TOKEN;
     if (!token) return tasks;
     return Promise.all(tasks.map(async t => {
         if (!t.rerun) return t;
         const { repo, sha } = t.rerun;
-        const failure = await memo(`failure ${sha}`, 10 * MINUTE, () => fetchFailure(token, repo, sha)).catch(error => { logFailure('Could not load why checks failed', error); return null; });
+        const failure = await memo(`failure ${sha}`, MINUTE, () => fetchFailure(token, repo, sha)).catch(error => { logFailure('Could not load why checks failed', error); return null; });
         return failure ? { ...t, failure, fix: t.fix && `${t.fix}
 
 ${failureText(failure)}` } : t;
@@ -209,14 +210,14 @@ export async function loadCosts(): Promise<{ claude?: number; claudeNote?: strin
 }
 
 /**
- * The top errors per Worker over 24 hours (#58). The query API takes only the Workers Observability permission, so a
- * refusal is a quiet setup note.
+ * One Worker's top errors over 24 hours (#58), for its project page. The query API takes only the Workers Observability
+ * permission, so a refusal is a quiet setup note.
  */
-export async function loadWorkerErrors(deployed: Map<string, string> | undefined): Promise<{ errors?: Map<string, WorkerError[]>; setup?: string; problem?: string }> {
+export async function loadWorkerErrors(worker: string, deployedAt: string | undefined): Promise<{ errors?: WorkerError[]; setup?: string; problem?: string }> {
     const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
     if (!token || !account) return {}; // loadAnalytics already asks for these
     try {
-        return { errors: await memo('worker errors', 5 * MINUTE, () => fetchWorkerErrors(token, account, deployed ?? new Map())) };
+        return { errors: await memo(`worker errors ${worker} ${deployedAt}`, 5 * MINUTE, () => fetchWorkerErrors(token, account, worker, deployedAt)) };
     } catch (error) {
         logFailure('Could not load Worker errors', error);
         return refusedBy(error)
@@ -283,7 +284,7 @@ export const loadToday = cache(async function loadToday() {
         ...(analytics.data && account ? workerTasks(rows, analytics.data, account) : []),
     ];
     // Stable sort: these slot in by level, after the project tasks of the same level
-    const tasks = await withFailures([...board.tasks, ...extra].sort((a, b) => a.level - b.level));
+    const tasks = [...board.tasks, ...extra].sort((a, b) => a.level - b.level);
     // One row per site, in PROJECTS order, for the Sites list and each project's page; its light counts every task it has
     const sites = board.projects.map((p, i) => ({
         p, live: live[i], worker: rows[i].worker, light: lightOf(tasks.filter(t => t.project === p.name)),

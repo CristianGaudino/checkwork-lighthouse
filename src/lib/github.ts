@@ -157,22 +157,42 @@ const Runs = z.object({ workflow_runs: z.array(z.object({ status: z.string().nul
 /** Run conclusions that count as failed checks, here and for the Re-run button (act.ts). */
 export const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
 
+/** The first that failed, else the first cancelled: a cancelled run never finished, so it can't count as passing either. */
+export const firstBroken = <T extends { conclusion: string | null }>(xs: T[]) =>
+    xs.find(x => FAILED.has(x.conclusion ?? '')) ?? xs.find(x => x.conclusion === 'cancelled');
+
+const SKIPPED = new Set(['skipped', 'neutral', 'stale']);
+/** One check's outcome, from a run's or check run's status and conclusion, or a commit status's state. The one rule for every page. */
+export function checkState(status: string, conclusion: string | null): 'passing' | 'failing' | 'running' | 'skipped' {
+    const c = (conclusion ?? status).toLowerCase();
+    // Cancelled never finished: failing, so nothing merges on a CI run someone stopped
+    if (FAILED.has(c) || c === 'error' || c === 'action_required' || c === 'cancelled') return 'failing';
+    if (c === 'success') return 'passing';
+    if (SKIPPED.has(c)) return 'skipped';
+    return 'running';
+}
+
 /** How a commit's workflow runs went: any failure fails it, then any still going means running. */
 export function runsChecks(runs: z.infer<typeof Runs>['workflow_runs']): PullRequest['checks'] {
     if (!runs.length) return 'none';
-    if (runs.some(r => FAILED.has(r.conclusion ?? ''))) return 'failing';
-    return runs.some(r => r.status !== 'completed') ? 'running' : 'passing';
+    const states = runs.map(r => checkState(r.status ?? '', r.conclusion));
+    if (states.includes('failing')) return 'failing';
+    return states.includes('running') ? 'running' : 'passing';
 }
+
+/** A GET on one of OWNER's repos (`path` starts with the repo name), as GitHub's REST API answers it. */
+export const githubRest = (token: string, path: string, init?: RequestInit) => fetch(`https://api.github.com/repos/${OWNER}/${path}`, {
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
+    signal: AbortSignal.timeout(10_000),
+    ...init,
+});
 
 /**
  * How one commit's checks went, from its Actions runs, for where GraphQL gave none: a fine-grained token can't read
  * check results on a private repo, but it can read Actions. Throws when GitHub refuses.
  */
 export async function fetchRuns(token: string, repo: string, sha: string): Promise<PullRequest['checks']> {
-    const res = await fetch(`https://api.github.com/repos/${OWNER}/${repo}/actions/runs?head_sha=${sha}&per_page=20`, {
-        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
-        signal: AbortSignal.timeout(10_000),
-    });
+    const res = await githubRest(token, `${repo}/actions/runs?head_sha=${sha}&per_page=20`);
     if (!res.ok) throw new Error(`GitHub Actions runs for ${repo}: ${res.status}`);
     return runsChecks(Runs.parse(await res.json()).workflow_runs);
 }

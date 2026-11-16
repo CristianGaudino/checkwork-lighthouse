@@ -29,7 +29,12 @@ async function Work(props: PageProps<'/work'>) {
             <PageTitle sub={t.tasks.length ? 'Worst first' : undefined}>{t.tasks.length ? `${t.tasks.length} to do` : 'Nothing to do'}</PageTitle>
             {[t.problem, t.uptime.problem].filter(Boolean).map(text => <Problem key={text}>{text}</Problem>)}
             <div className="mt-10">
-                {t.tasks.length > 0 && <Section title="To do"><Tasks tasks={t.tasks} local={local} /></Section>}
+                {t.tasks.length > 0 && (
+                    <Section title="To do">
+                        {/* Tasks reads why failing checks failed: the rest of the page shows meanwhile */}
+                        <Suspense fallback={<p className="mt-3 text-sm text-fg-muted">Loading</p>}><Tasks tasks={t.tasks} local={local} /></Suspense>
+                    </Section>
+                )}
                 {t.snoozed > 0 && (
                     <form action={wakeAll} className="mt-3 text-sm text-fg-muted">
                         {n(t.snoozed, 'task')} snoozed. <button type="submit" className={`${link} text-fg`}>Show {t.snoozed === 1 ? 'it' : 'them'} again</button>

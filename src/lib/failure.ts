@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { OWNER } from '../../lighthouse.config';
-import { FAILED } from './github';
+import { firstBroken, githubRest } from './github';
 
 /**
  * Why a commit's checks failed, from its Actions runs: the first failed job and step, the job's error notes and the end
@@ -43,31 +43,38 @@ export const failureText = (f: Failure) =>
     [`It failed in ${f.workflow}, job ${f.job}${f.step ? `, step ${f.step}` : ''}.`, ...f.notes, f.log.length ? `End of the log:\n${f.log.slice(-12).join('\n')}` : '']
         .filter(Boolean).join('\n').slice(0, 1500);
 
-const get = (token: string, url: string) => fetch(url.startsWith('https://') ? url : `https://api.github.com/repos/${OWNER}/${url}`, {
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'lighthouse' },
-    signal: AbortSignal.timeout(10_000),
-});
+/**
+ * A job's log. GitHub answers with a redirect to a signed file URL, followed by hand so the token never goes to the
+ * file host (which would refuse it). Empty when either refuses.
+ */
+async function jobLog(token: string, repo: string, job: number): Promise<string> {
+    const r = await githubRest(token, `${repo}/actions/jobs/${job}/logs`, { redirect: 'manual' });
+    const to = r.headers.get('location');
+    if (!to?.startsWith('https://')) return r.ok ? r.text() : '';
+    const file = await fetch(to, { signal: AbortSignal.timeout(10_000) });
+    return file.ok ? file.text() : '';
+}
 
 /**
  * The first failed job on a commit, or null when nothing failed. Throws when GitHub refuses the runs or jobs. The notes
  * (Checks: Read) and the log (Actions: Read, a redirect to the file) are extras: either refused leaves it empty.
  */
 export async function fetchFailure(token: string, repo: string, sha: string): Promise<Failure | null> {
-    const runs = await get(token, `${repo}/actions/runs?head_sha=${sha}&per_page=20`);
+    const runs = await githubRest(token, `${repo}/actions/runs?head_sha=${sha}&per_page=20`);
     if (!runs.ok) throw new Error(`GitHub runs for ${repo}: ${runs.status}`);
-    const run = Runs.parse(await runs.json()).workflow_runs.find(r => FAILED.has(r.conclusion ?? ''));
+    const run = firstBroken(Runs.parse(await runs.json()).workflow_runs);
     if (!run) return null;
-    const jobs = await get(token, `${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=50`);
+    const jobs = await githubRest(token, `${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=50`);
     if (!jobs.ok) throw new Error(`GitHub jobs for ${repo}: ${jobs.status}`);
-    const job = Jobs.parse(await jobs.json()).jobs.find(j => FAILED.has(j.conclusion ?? ''));
+    const job = firstBroken(Jobs.parse(await jobs.json()).jobs);
     if (!job) return null;
     const [notes, log] = await Promise.all([
-        get(token, `${repo}/check-runs/${job.id}/annotations`).then(async r => (r.ok ? usefulNotes(Notes.parse(await r.json())) : []), () => []),
+        githubRest(token, `${repo}/check-runs/${job.id}/annotations`).then(async r => (r.ok ? usefulNotes(Notes.parse(await r.json())) : []), () => []),
         // shortcut: reads the whole log to keep its end; fine for CI logs of a few MB, ask for a byte range if one ever gets huge
-        get(token, `${repo}/actions/jobs/${job.id}/logs`).then(async r => (r.ok ? logTail(await r.text()) : []), () => []),
+        jobLog(token, repo, job.id).then(logTail, () => []),
     ]);
     return {
-        workflow: run.name ?? 'A workflow', job: job.name, step: job.steps?.find(s => FAILED.has(s.conclusion ?? ''))?.name ?? null,
+        workflow: run.name ?? 'A workflow', job: job.name, step: firstBroken(job.steps ?? [])?.name ?? null,
         href: job.html_url ?? `https://github.com/${OWNER}/${repo}/actions/runs/${run.id}`, notes, log,
     };
 }

@@ -58,13 +58,14 @@ async function PullRequest(props: Props) {
     ]);
     const checks = pr.checks ?? actionChecks ?? [];
     const failing = checks.some(c => c.state === 'failing');
-    const failure = failing && pr.sha ? await quiet('why checks failed', memo(`failure ${pr.sha}`, 10 * MINUTE, () => fetchFailure(token, p.repo, pr.sha!))) : null;
+    const failure = failing && pr.sha ? await quiet('why checks failed', memo(`failure ${pr.sha}`, MINUTE, () => fetchFailure(token, p.repo, pr.sha!))) : null;
 
     // Merge and Approve follow the task list's rules, from the same picture of the repo
     const status = today.repos[PROJECTS.indexOf(p)];
     const listed = status?.prs.find(x => x.number === number);
     const open = pr.state === 'OPEN';
-    const mergeable = open && !pr.draft && listed?.sha === pr.sha && listed && status ? canMerge(listed, status.checksPrs) : false;
+    // Never beside a failing check: the page's own reading wins over the task list's minute-old one
+    const mergeable = open && !pr.draft && !failing && listed?.sha === pr.sha && listed && status ? canMerge(listed, status.checksPrs) : false;
     const verdict = !open ? `${pr.state[0]}${pr.state.slice(1).toLowerCase()}` : pr.draft ? 'Draft' : failing ? 'Checks fail' : checks.some(c => c.state === 'running') ? 'Checks running' : mergeable ? 'Ready to merge' : 'Open';
 
     return (
@@ -82,7 +83,7 @@ async function PullRequest(props: Props) {
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
                 <span className="flex items-center gap-2 text-sm"><Dot light={failing ? 'bad' : mergeable ? 'ok' : 'warn'} />{verdict}</span>
-                {open && listed && pr.author !== OWNER && <ActButton action={approvePr} label="Approve" fields={{ repo: p.repo, number: String(number) }} />}
+                {open && !pr.draft && listed && pr.author !== OWNER && <ActButton action={approvePr} label="Approve" fields={{ repo: p.repo, number: String(number) }} />}
                 {mergeable && pr.sha && <ActButton action={mergePr} label="Merge" fields={{ repo: p.repo, number: String(number), sha: pr.sha }} confirm={`Merge #${number} into main in ${p.repo}? Merging deploys where the repo deploys on merge.`} />}
             </div>
 

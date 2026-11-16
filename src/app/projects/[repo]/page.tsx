@@ -41,8 +41,6 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
     const local = process.env.NODE_ENV === 'development';
     const [t, pc, sessions] = await Promise.all([loadToday(), readLocalRepos(), readSessions()]);
     const { p, live, worker, light, alerts, expires } = t.sites[i];
-    const [werrors, unset] = await Promise.all([worker ? loadWorkerErrors(t.deploys.deployed) : null, loadMissingSettings(worker, p.repoStatus?.envNames)]);
-    const top = worker ? werrors?.errors?.get(worker) : undefined;
     const traffic = t.analytics.data?.traffic.get(siteKey(p.site));
     const w = worker ? t.analytics.data?.workers.get(worker) : undefined;
     const release = p.repoStatus?.release;
@@ -109,8 +107,43 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                     </Section>
                 )}
 
-                {tasks.length > 0 && <Section title="Needs you"><Tasks tasks={tasks} local={local} /></Section>}
+                {tasks.length > 0 && <Section title="Needs you"><Suspense fallback={<p className="mt-3 text-sm text-fg-muted">Loading</p>}><Tasks tasks={tasks} local={local} /></Suspense></Section>}
 
+                <Suspense fallback={null}>
+                    <WorkerHealth worker={worker} deployedAt={worker ? t.deploys.deployed?.get(worker) : undefined} names={p.repoStatus?.envNames} />
+                </Suspense>
+
+                <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
+                    <Board local={local} project={p.name} />
+                </Suspense>
+
+                {traffic && traffic.topPaths.length > 0 && (
+                    <Section title="Top pages" aside="Page views, 7 days">
+                        <ul className={`${panel} text-sm tabular-nums`}>
+                            {traffic.topPaths.map(tp => (
+                                <li key={tp.path} className="flex justify-between gap-4 px-4 py-2">
+                                    <span className="truncate">{tp.path}</span><span className="text-fg-muted">{num.format(tp.views)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </Section>
+                )}
+
+                {!t.problem && <Versions repos={t.repos} only={p.repo} />}
+
+                {sessions && <ClaudeSessions title="Claude sessions" sessions={sessions.filter(s => s.repo === p.repo)} />}
+                {pc?.repos.some(r => r.name === p.repo) && <Git title="On this PC" root={pc.root} repos={pc.repos.filter(r => r.name === p.repo)} />}
+            </div>
+        </>
+    );
+}
+
+/** The Worker's settings missing from .env.example and its top errors: each a Cloudflare call, so the page shows without waiting on them. */
+async function WorkerHealth({ worker, deployedAt, names }: { worker: string | null; deployedAt: string | undefined; names: string[] | undefined }) {
+    const [werrors, unset] = await Promise.all([worker ? loadWorkerErrors(worker, deployedAt) : null, loadMissingSettings(worker, names)]);
+    const top = werrors?.errors;
+    return (
+        <>
                 {unset && unset.length > 0 && (
                     <Section title="Worker settings" aside={`${unset.length} not set`}>
                         <p className="mt-3 max-w-2xl text-sm text-fg-muted">
@@ -136,28 +169,6 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                         )}
                     </Section>
                 ) : null}
-
-                <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
-                    <Board local={local} project={p.name} />
-                </Suspense>
-
-                {traffic && traffic.topPaths.length > 0 && (
-                    <Section title="Top pages" aside="Page views, 7 days">
-                        <ul className={`${panel} text-sm tabular-nums`}>
-                            {traffic.topPaths.map(tp => (
-                                <li key={tp.path} className="flex justify-between gap-4 px-4 py-2">
-                                    <span className="truncate">{tp.path}</span><span className="text-fg-muted">{num.format(tp.views)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </Section>
-                )}
-
-                {!t.problem && <Versions repos={t.repos} only={p.repo} />}
-
-                {sessions && <ClaudeSessions title="Claude sessions" sessions={sessions.filter(s => s.repo === p.repo)} />}
-                {pc?.repos.some(r => r.name === p.repo) && <Git title="On this PC" root={pc.root} repos={pc.repos.filter(r => r.name === p.repo)} />}
-            </div>
         </>
     );
 }

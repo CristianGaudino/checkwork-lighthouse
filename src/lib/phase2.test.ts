@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { checkState, parsePr } from './pr';
+import { checkState } from './github';
+import { parsePr } from './pr';
 import { envNames, missingOnWorker } from './secrets';
 import { errorQuery, rowsOf, topErrors } from './werrors';
 
@@ -31,17 +32,16 @@ it('lists the .env.example names the Worker lacks, leaving out built-in NEXT_PUB
     expect(envNames(null)).toEqual([]);
 });
 
-it('groups Worker errors by Worker, top five each, and marks ones not seen before the deploy', () => {
+it('keeps a Worker\'s top five errors, and marks ones not seen before the deploy', () => {
     const rows = rowsOf({ result: { calculations: [{ aggregates: [
-        { count: 9, value: 9, groups: [{ key: '$metadata.service', value: 'w' }, { key: '$metadata.error', value: 'boom' }] },
-        { count: 3, groups: [{ key: '$metadata.service', value: 'w' }, { key: '$metadata.error', value: 'old' }] },
-        { count: 1, groups: [{ key: '$metadata.service', value: 'v' }, { key: '$metadata.error', value: 'x' }] },
+        { count: 9, value: 9, groups: [{ key: '$metadata.error', value: 'boom' }] },
+        { count: 3, groups: [{ key: '$metadata.error', value: 'old' }] },
+        { count: 1, groups: [] },
     ] }] } });
-    expect(rows[1]).toEqual({ by: { '$metadata.service': 'w', '$metadata.error': 'old' }, count: 3 });
-    const top = topErrors(rows, new Map([['w', new Set(['old'])]]));
-    expect(top.get('w')).toEqual([{ message: 'boom', count: 9, fresh: true }, { message: 'old', count: 3, fresh: false }]);
+    expect(rows[1]).toEqual({ by: { '$metadata.error': 'old' }, count: 3 });
+    expect(topErrors(rows, new Set(['old']))).toEqual([{ message: 'boom', count: 9, fresh: true }, { message: 'old', count: 3, fresh: false }]);
     // No window before the deploy to compare with: nothing is called new
-    expect(top.get('v')).toEqual([{ message: 'x', count: 1, fresh: false }]);
+    expect(topErrors(rows, null).map(e => e.fresh)).toEqual([false, false]);
     expect(rowsOf({ result: {} })).toEqual([]);
     expect(errorQuery(0, 1, ['a'], 'w').parameters.filters).toHaveLength(2);
 });
