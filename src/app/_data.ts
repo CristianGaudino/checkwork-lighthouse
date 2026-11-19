@@ -5,7 +5,8 @@ import { canSnooze, readSnoozed, SNOOZE_COOKIE } from '@/lib/snooze';
 import { fetchRepos, fetchRuns, type PullRequest, type RepoStatus } from '@/lib/github';
 import { fetchMonitors, matchUptime, type Uptime } from '@/lib/uptime';
 import { fetchUsage, minutesTask, summarise, type Minutes } from '@/lib/minutes';
-import { fetchAnalytics, workerTasks, type Analytics as AnalyticsData } from '@/lib/cloudflare';
+import { fetchAnalytics, fetchVisitors, workerTasks, type Analytics as AnalyticsData, type Visitors } from '@/lib/cloudflare';
+import { clerkSecretName, fetchUsers, type Users } from '@/lib/clerk';
 import { fetchNeon, type NeonUsage } from '@/lib/neon';
 import { fetchDeployed, fetchLive, liveState, type LiveState } from '@/lib/live';
 import { ago, buildBoard, lightOf, mainTask, taskKey, type Task } from '@/lib/today';
@@ -69,6 +70,33 @@ export async function loadAnalytics(): Promise<{ data?: AnalyticsData; problem?:
     } catch (error) {
         console.error('Could not load Cloudflare analytics', error);
         return { problem: 'Cloudflare did not answer the analytics query. Check the token has Account Analytics: Read, then reload.' };
+    }
+}
+
+/** Last week's visits and where this week's came from. loadAnalytics already asks for a missing token; a refusal is a warning. */
+export async function loadVisitors(): Promise<{ visitors?: Map<string, Visitors>; problem?: string }> {
+    const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN, account = process.env.CLOUDFLARE_ACCOUNT_ID;
+    if (!token || !account) return {};
+    try {
+        return { visitors: await memo('visitors', 5 * MINUTE, () => fetchVisitors(token, account)) };
+    } catch (error) {
+        console.error('Could not load Cloudflare visitors', error);
+        return { problem: 'Cloudflare did not answer the visitors query, so last week and referrers are missing. Reload in a minute.' };
+    }
+}
+
+/**
+ * Sign-ups and active users from the repo's Clerk app, when its secret is set. `clerk`: the repo's .env.example names
+ * CLERK_SECRET_KEY, so a missing secret is setup still to do; for any other repo it says nothing.
+ */
+export async function loadUsers(repo: string, clerk: boolean): Promise<{ users?: Users; problem?: string; setup?: string }> {
+    const name = clerkSecretName(repo), key = process.env[name];
+    if (!key) return clerk ? { setup: `Set ${name} (the Clerk app's secret key) to see sign-ups and active users.` } : {};
+    try {
+        return { users: await memo(`users ${repo}`, 10 * MINUTE, () => fetchUsers(key)) };
+    } catch (error) {
+        logFailure('Could not load Clerk users', error);
+        return { problem: refusedBy(error) ? `Clerk refused ${name}. It must be the app's secret key (sk_live_...).` : 'Clerk did not answer, so users are missing. Reload in a minute.' };
     }
 }
 

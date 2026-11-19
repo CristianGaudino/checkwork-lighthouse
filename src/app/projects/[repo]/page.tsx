@@ -3,14 +3,15 @@ import { Gate } from '../../_sections/Gate';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/access';
 import { readSessions } from '@/lib/claude';
+import { usesClerk } from '@/lib/clerk';
 import { askHref } from '@/lib/vscode';
-import { siteKey } from '@/lib/cloudflare';
+import { siteKey, type SiteTraffic } from '@/lib/cloudflare';
 import { readLocalRepos } from '@/lib/local';
 import { severe } from '@/lib/security';
 import { setupChecks } from '@/lib/setup';
 import { ago } from '@/lib/today';
 import { OWNER, PROJECTS } from '../../../../lighthouse.config';
-import { loadMissingSettings, loadToday, loadWorkerErrors } from '../../_data';
+import { loadMissingSettings, loadToday, loadUsers, loadVisitors, loadWorkerErrors } from '../../_data';
 import { Board } from '../../_sections/Board';
 import { ClaudeSessions } from '../../_sections/Claude';
 import { Git } from '../../_sections/Pc';
@@ -18,6 +19,7 @@ import { liveText, uptimeText, Week } from '../../_sections/Sites';
 import { ProjectIcon } from '../../_sections/ProjectIcon';
 import { DeployLink, Tasks } from '../../_sections/Tasks';
 import { Versions } from '../../_sections/Usage';
+import { SiteUsers, SiteVisitors } from '../../_sections/Visitors';
 import { Dot, ext, link, num, PageTitle, panel, Problem, Section, Setup } from '../../_sections/ui';
 
 const find = (repo: string) => PROJECTS.findIndex(p => p.repo === repo);
@@ -117,17 +119,9 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                     <Board local={local} project={p.name} />
                 </Suspense>
 
-                {traffic && traffic.topPaths.length > 0 && (
-                    <Section title="Top pages" aside="Page views, 7 days">
-                        <ul className={`${panel} text-sm tabular-nums`}>
-                            {traffic.topPaths.map(tp => (
-                                <li key={tp.path} className="flex justify-between gap-4 px-4 py-2">
-                                    <span className="truncate">{tp.path}</span><span className="text-fg-muted">{num.format(tp.views)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </Section>
-                )}
+                <Suspense fallback={null}>
+                    <Audience repo={p.repo} site={p.site} clerk={usesClerk(p.repoStatus?.envNames)} traffic={traffic} />
+                </Suspense>
 
                 {!t.problem && <Versions repos={t.repos} only={p.repo} />}
 
@@ -169,6 +163,17 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
                         )}
                     </Section>
                 ) : null}
+        </>
+    );
+}
+
+/** Visitors on last week and the site's users: each another call, so the page shows without waiting on them. */
+async function Audience({ repo, site, clerk, traffic }: { repo: string; site: string; clerk: boolean; traffic: SiteTraffic | undefined }) {
+    const [v, u] = await Promise.all([loadVisitors(), loadUsers(repo, clerk)]);
+    return (
+        <>
+            <SiteVisitors traffic={traffic} visitors={v.visitors?.get(siteKey(site))} problem={traffic ? v.problem : undefined} />
+            <SiteUsers {...u} />
         </>
     );
 }

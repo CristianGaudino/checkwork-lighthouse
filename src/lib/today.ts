@@ -132,6 +132,10 @@ export function ago(iso: string, now = Date.now()): string {
     return 'just now';
 }
 
+/** A count against the week before: "+12 vs last week", "-3 vs last week" or "Same as last week". */
+export const vsLastWeek = (now: number, before: number) =>
+    now === before ? 'Same as last week' : `${now > before ? '+' : '-'}${new Intl.NumberFormat('en-IE').format(Math.abs(now - before))} vs last week`;
+
 const DURATION: [Intl.NumberFormat, number][] = (['day', 'hour', 'minute'] as const).map((unit, i) => [new Intl.NumberFormat('en-IE', { style: 'unit', unit, unitDisplay: 'long' }), [86_400, 3_600, 60][i]]);
 
 /** "3 days", "1 hour", "5 minutes"; under a minute counts as one. */
