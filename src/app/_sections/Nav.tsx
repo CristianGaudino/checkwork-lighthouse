@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSyncExternalStore } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Mark } from '@/components/Mark';
+import { isFolded, SIDEBAR_EVENT, toggleSidebar } from '@/lib/sidebar';
 import { refresh } from '../ask';
 import { openPalette } from './Palette';
 
@@ -22,6 +24,9 @@ const ICONS = {
     // A speech bubble
     claude: <path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />,
     pc: <><rect x="3" y="4" width="18" height="12" rx="1.5" /><path d="M9 20h6M12 16v4" /></>,
+    // A panel with its edge, and which way it goes
+    fold: <><rect x="3" y="4" width="18" height="16" rx="1.5" /><path d="M9 4v16M15.5 10l-2 2 2 2" /></>,
+    unfold: <><rect x="3" y="4" width="18" height="16" rx="1.5" /><path d="M9 4v16M13.5 10l2 2-2 2" /></>,
 };
 
 // `tab`: also in the phone's tab bar, which has room for four; the rest are a search away there
@@ -36,46 +41,66 @@ const PAGES = [
     { href: '/pc', label: 'This PC', icon: 'pc', local: true },
 ] as const;
 
-const Icon = ({ name }: { name: keyof typeof ICONS }) => (
-    <svg viewBox="0 0 24 24" className="size-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{ICONS[name]}</svg>
+const Icon = ({ name, className = '' }: { name: keyof typeof ICONS; className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`size-[18px] shrink-0 ${className}`}fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{ICONS[name]}</svg>
 );
 
-const RefreshButton = ({ className, form = '' }: { className: string; form?: string }) => (
+type RefreshProps = { className: string; label?: string; title?: string };
+
+const RefreshButton = ({ form = '', ...props }: RefreshProps & { form?: string }) => (
     // Answers are remembered for a minute or more (src/lib/memo.ts); this fetches everything now, which takes a few seconds
-    <form action={refresh} className={form}><Refreshing className={className} /></form>
+    <form action={refresh} className={form}><Refreshing {...props} /></form>
 );
 
-function Refreshing({ className }: { className: string }) {
+function Refreshing({ className, label, title }: RefreshProps) {
     const { pending } = useFormStatus();
     return (
-        <button type="submit" disabled={pending} className={`flex items-center gap-2 ${className}`}>
+        <button type="submit" disabled={pending} title={title} className={`flex items-center gap-2 ${className}`}>
             <svg viewBox="0 0 24 24" className={`size-4 shrink-0 ${pending ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4" /></svg>
-            {pending ? 'Refreshing' : 'Refresh'}
+            <span className={label}>{pending ? 'Refreshing' : 'Refresh'}</span>
         </button>
     );
 }
 
 // Two copies of the brand (sidebar, phone bar), so each Mark needs its own gradient id: one inside a hidden sidebar blanks the other
-const Brand = ({ id }: { id: string }) => (
+const Brand = ({ id, label }: { id: string; label?: string }) => (
     <Link href="/" className="flex items-center gap-2 font-display text-[15px] font-semibold">
-        <Mark id={id} className="size-6" />
-        Lighthouse
+        <Mark id={id} className="size-6 shrink-0" />
+        <span className={label}>Lighthouse</span>
     </Link>
 );
+
+/** "Powered by Checkwork" with its logo, as in How Many?. Folded, the logo is cropped to its check mark. */
+const PoweredBy = () => (
+    <a href="https://www.checkwork.ie" target="_blank" rel="noopener" title="Powered by Checkwork" className="mt-3 flex min-h-9 items-center gap-2 px-3 text-xs text-fg-muted transition-colors hover:text-fg folded:justify-center folded:px-0">
+        <span className="folded:sr-only">Powered by</span>
+        {/* eslint-disable-next-line @next/next/no-img-element -- a small SVG served as is: nothing for next/image to do */}
+        <img src="/brand/checkwork-logo-on-dark.svg" width={345} height={60} alt="Checkwork" className="h-4 w-auto folded:w-4 folded:object-cover folded:object-left" />
+        <span className="sr-only">(opens in a new tab)</span>
+    </a>
+);
+
+const onFold = (change: () => void) => {
+    window.addEventListener(SIDEBAR_EVENT, change);
+    return () => window.removeEventListener(SIDEBAR_EVENT, change);
+};
 
 /** The sidebar on a wide screen, and on a phone a slim top bar plus a tab bar at the bottom, where a thumb reaches. */
 export function Nav({ local }: { local: boolean }) {
     const path = usePathname();
     const pages = PAGES.filter(p => !('local' in p) || local);
     const current = (href: string) => (href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`));
+    // The look is CSS (`folded:`, set before paint); this is only for tooltips and the button's state. False on the server.
+    const folded = useSyncExternalStore(onFold, isFolded, () => false);
+    const tip = (label: string) => (folded ? label : undefined);
     return (
         <>
             <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto border-r border-line px-3 py-5 lg:flex">
-                <div className="px-3"><Brand id="side" /></div>
-                <button type="button" onClick={openPalette} className="mt-6 flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-fg-muted shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:text-fg">
+                <div className="px-3 folded:px-2"><Brand id="side" label="folded:sr-only" /></div>
+                <button type="button" onClick={openPalette} title={tip('Go to (Ctrl K)')} className="mt-6 flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-fg-muted shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:text-fg folded:justify-center folded:px-0">
                     <Icon name="search" />
-                    <span className="flex-1 text-left">Go to</span>
-                    <kbd className="rounded-md px-1.5 py-0.5 font-sans text-[11px] leading-none shadow-[inset_0_0_0_1px_var(--line)]">Ctrl K</kbd>
+                    <span className="flex-1 text-left folded:sr-only">Go to</span>
+                    <kbd className="rounded-md px-1.5 py-0.5 font-sans text-[11px] leading-none shadow-[inset_0_0_0_1px_var(--line)] folded:hidden">Ctrl K</kbd>
                 </button>
                 <nav aria-label="Pages" className="mt-4">
                     <ul className="grid gap-1">
@@ -84,16 +109,25 @@ export function Nav({ local }: { local: boolean }) {
                                 <Link
                                     href={p.href}
                                     aria-current={current(p.href) ? 'page' : undefined}
-                                    className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-fg-muted transition-colors hover:text-fg aria-[current=page]:bg-surface aria-[current=page]:text-fg aria-[current=page]:shadow-[inset_0_0_0_1px_var(--line)]"
+                                    title={tip(p.label)}
+                                    className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-fg-muted transition-colors hover:text-fg aria-[current=page]:bg-surface aria-[current=page]:text-fg aria-[current=page]:shadow-[inset_0_0_0_1px_var(--line)] folded:justify-center folded:px-0"
                                 >
                                     <Icon name={p.icon} />
-                                    {p.label}
+                                    <span className="folded:sr-only">{p.label}</span>
                                 </Link>
                             </li>
                         ))}
                     </ul>
                 </nav>
-                <RefreshButton form="mt-auto" className="h-9 w-full rounded-lg px-3 text-left text-sm text-fg-muted transition-colors hover:text-fg" />
+                {/* Fold and open sit at the foot beside Refresh, as in How Many? */}
+                <div className="mt-auto flex items-center gap-1 folded:flex-col">
+                    <RefreshButton form="flex-1 folded:flex-none" label="folded:sr-only" title={tip('Refresh')} className="h-9 w-full rounded-lg px-3 text-left text-sm text-fg-muted transition-colors hover:text-fg folded:size-9 folded:justify-center folded:px-0" />
+                    <button type="button" onClick={toggleSidebar} aria-expanded={!folded} aria-label={folded ? 'Expand sidebar' : 'Collapse sidebar'} title={folded ? 'Expand sidebar' : 'Collapse sidebar'} className="grid size-9 shrink-0 place-items-center rounded-lg text-fg-muted transition-colors hover:text-fg">
+                        <Icon name="fold" className="folded:hidden" />
+                        <Icon name="unfold" className="hidden folded:block" />
+                    </button>
+                </div>
+                <PoweredBy />
             </aside>
 
             <header className="flex h-14 items-center justify-between border-b border-line px-4 sm:px-6 lg:hidden">
