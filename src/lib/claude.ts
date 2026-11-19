@@ -11,7 +11,8 @@
  */
 export type SessionState = 'question' | 'waiting' | 'working' | 'blocked' | 'stopped';
 export type Question = { text: string; options: string[] };
-export type Session = { id: string; repo: string; title: string; state: SessionState; at: string; prUrl: string | null; questions: Question[] };
+/** `done`: you marked it done (Done on the page); it stops needing you until its next turn. */
+export type Session = { id: string; repo: string; title: string; state: SessionState; at: string; prUrl: string | null; questions: Question[]; done?: boolean };
 
 const RECENT_MS = 2 * 86_400_000; // sessions touched in the last two days
 const TAIL_BYTES = 512 * 1024; // a transcript's end holds its last turn and latest title
@@ -82,6 +83,33 @@ export async function scanTranscript(lines: Iterable<string> | AsyncIterable<str
 
 const folderName = (cwd: string) => cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? '?';
 
+/** What the transcript can't say: a run from this page waiting on your answer, or a Claude Code permission prompt the hook noted. */
+export type Waiting = { run?: { state: string; asks: { kind: string; summary: string; questions: { question: string; options: { label: string }[] }[] }[] } | null; marker?: { type?: unknown; message?: unknown; at?: unknown } | null };
+
+/**
+ * The transcript's reading, corrected by what's known for sure. A run from this page knows each permission request and
+ * question the moment it's made; a session in VS Code is known to wait on a permission prompt by the Notification hook
+ * (scripts/claude-waiting.mjs), whose note counts until the transcript moves on past it.
+ */
+export function overlay(s: Session, w: Waiting): Session {
+    const asks = w.run?.asks ?? [];
+    if (asks.length) {
+        return { ...s, state: 'question', questions: asks.flatMap(a => (a.kind === 'question'
+            ? a.questions.map(q => ({ text: clip(q.question, 300), options: q.options.map(o => clip(o.label, 80)).slice(0, 4) }))
+            : [{ text: clip(`Wants to ${a.summary}`, 300), options: [] }])) };
+    }
+    if (w.run?.state === 'working') return { ...s, state: 'working' };
+    // shortcut: an allowed tool still reads as waiting until it finishes (Claude Code notes nothing on yes); fine for minutes-long steps
+    const m = w.marker;
+    if (m?.type === 'permission_prompt' && typeof m.at === 'string' && m.at > s.at) {
+        return { ...s, state: 'question', questions: [{ text: clip(typeof m.message === 'string' ? m.message : 'Waiting for your OK', 300), options: [] }] };
+    }
+    return s;
+}
+
+/** The key Done and the notifications go by: a new turn or state is a new key, so a session done once asks again. */
+export const sessionKey = (s: Session) => `claude ${s.id} ${s.state} ${s.at}`;
+
 // In their own file so the browser's code can build them without this file's node: imports
 import { cache } from 'react';
 export { askHref, resumeHref } from './vscode';
@@ -89,7 +117,7 @@ export { askHref, resumeHref } from './vscode';
 /** null outside `next dev`. Newest first, waiting sessions on top. Read once per request (cache): the layout and the page both want it. */
 export const readSessions = cache(async (now = Date.now()): Promise<Session[] | null> => {
     if (process.env.NODE_ENV !== 'development') return null;
-    const [{ readdir, stat, open }, path, os] = await Promise.all([import('node:fs/promises'), import('node:path'), import('node:os')]);
+    const [{ readdir, stat, open, readFile }, path, os] = await Promise.all([import('node:fs/promises'), import('node:path'), import('node:os')]);
     const root = path.join(os.homedir(), '.claude', 'projects');
     const dirs = await readdir(root).catch(() => [] as string[]);
     const files = (await Promise.all(dirs.map(async d => {
@@ -114,9 +142,19 @@ export const readSessions = cache(async (now = Date.now()): Promise<Session[] | 
             await handle.close();
         }
     }));
+    const [{ runView }, { cookies }, { readSnoozed, SNOOZE_COOKIE }] = await Promise.all([import('./runner'), import('next/headers'), import('./snooze')]);
+    const done = readSnoozed((await cookies()).get(SNOOZE_COOKIE)?.value, now);
+    const marks = path.join(os.homedir(), '.claude', 'lighthouse');
+    const known = await Promise.all(sessions.filter(s => s !== null).map(async s => {
+        // shortcut: notes are never removed (a few hundred bytes each); clear ~/.claude/lighthouse if it ever matters
+        const marker = await readFile(path.join(marks, `${s.id}.json`), 'utf8').then(JSON.parse).catch(() => null);
+        const out = overlay(s, { run: runView(s.id), marker });
+        return done[sessionKey(out)] ? { ...out, done: true } : out;
+    }));
     const order: Record<SessionState, number> = { question: 0, blocked: 1, waiting: 2, working: 3, stopped: 4 };
-    // A file can be touched without a new turn, so the last turn decides too
-    return sessions.filter(s => s !== null).filter(s => now - Date.parse(s.at) < RECENT_MS).sort((a, b) => order[a.state] - order[b.state] || b.at.localeCompare(a.at));
+    // A file can be touched without a new turn, so the last turn decides too. The ones that need you come first
+    return known.filter(s => now - Date.parse(s.at) < RECENT_MS)
+        .sort((a, b) => Number(needsYou(b, now)) - Number(needsYou(a, now)) || order[a.state] - order[b.state] || b.at.localeCompare(a.at));
 });
 
 const FRESH_MS = 12 * 3_600_000;
@@ -128,6 +166,7 @@ const BLOCKED_MS = 5 * 60_000; // a build or a test run often takes a few minute
  * every three-minute build would ask for you.
  */
 export function needsYou(s: Session, now = Date.now()) {
+    if (s.done) return false;
     const age = now - Date.parse(s.at);
     return s.state === 'question' || (s.state === 'waiting' && age < FRESH_MS) || (s.state === 'blocked' && age >= BLOCKED_MS && age < FRESH_MS);
 }

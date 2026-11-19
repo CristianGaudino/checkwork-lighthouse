@@ -20,6 +20,21 @@ npm run dev                      # http://localhost:3000, this PC only (not the 
 
 The Access check is skipped under `npm run dev` only. Locally you also get the Claude page (every Claude Code session on this PC: read its whole history, reply, answer its questions and permission requests, start new ones, all without VS Code; it runs on your Claude Code login, never an API key), This PC (git state, dev servers running, today's Claude use), Claude on the Overview, Fix with Claude on tasks, and VS Code links in the palette (Ctrl+K).
 
+To hear about a Claude Code permission prompt in VS Code at once (otherwise Lighthouse guesses after five minutes), add these hooks to `~/.claude/settings.json` (beside any you have; the second clears the note once a tool you allowed has run). It writes one small file per waiting session in `~/.claude/lighthouse`, and nothing else:
+
+```json
+"hooks": {
+  "Notification": [
+    { "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": "node C:/Git/checkwork-lighthouse/scripts/claude-waiting.mjs" }] }
+  ],
+  "PostToolUse": [
+    { "hooks": [{ "type": "command", "command": "node C:/Git/checkwork-lighthouse/scripts/claude-waiting.mjs" }] }
+  ]
+}
+```
+
+Sessions run from the Claude page need no hook: Lighthouse knows their questions and permission requests as they come.
+
 ## Checks
 
 | Command | What it does |

@@ -1,4 +1,4 @@
-import { needsYou, type Session, type SessionState } from './claude';
+import { needsYou, sessionKey, type Session, type SessionState } from './claude';
 import { taskKey, type Task } from './today';
 
 /**
@@ -22,7 +22,7 @@ export function beats(tasks: Task[], sessions: Session[] | null, idle: Task[] = 
             return { key: `${taskKey(t)}${t.pr ? ` ${t.pr.sha}` : ''}`, kind, title: kind === 'pr' ? `Ready to merge: ${t.title}` : head, body: `${t.project}. ${t.detail}`, href: t.href, ...(idle.includes(t) && { quiet: true }) };
         }),
         ...(sessions ?? []).filter(s => needsYou(s)).map(s => ({
-            key: `claude ${s.id} ${s.state} ${s.at}`, kind: 'claude' as const,
+            key: sessionKey(s), kind: 'claude' as const,
             title: `${s.repo}: ${SAID[s.state]}`, body: s.questions[0]?.text ?? s.title, href: `/claude/${s.id}`,
         })),
     ];

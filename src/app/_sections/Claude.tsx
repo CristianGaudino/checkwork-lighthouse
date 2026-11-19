@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ago } from '@/lib/today';
-import { needsYou, type Session, type SessionState } from '@/lib/claude';
+import { needsYou, sessionKey, type Session, type SessionState } from '@/lib/claude';
+import { snoozeTask } from '../act';
 import { resumeHref } from '@/lib/vscode';
 import { ProjectIcon } from './ProjectIcon';
 import { ext, link, n, num, panel, Section, short } from './ui';
@@ -50,6 +51,13 @@ export function ClaudeSessions({ sessions, title = 'Claude sessions', more, oneR
                                 {s.prUrl && <a {...ext} className={link} href={s.prUrl}>PR</a>}
                                 <Link className={`${link} text-fg`} href={`/claude/${s.id}`}>{s.state === 'question' ? 'Answer' : 'Open'}</Link>
                                 <a className={link} href={resumeHref(s.id)} title="Opens the session in Claude Code, in VS Code">VS Code</a>
+                                {/* Read it and nothing to say: it stops needing you until Claude's next turn (a cookie, like Snooze) */}
+                                {needsYou(s) && (
+                                    <form action={snoozeTask} className="contents">
+                                        <input type="hidden" name="key" value={sessionKey(s)} />
+                                        <button type="submit" name="days" value={1} className={link} title="Stops counting it until Claude's next turn">Done</button>
+                                    </form>
+                                )}
                             </span>
                         </li>
                     ))}

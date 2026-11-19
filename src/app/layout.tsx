@@ -38,7 +38,9 @@ async function ownerParts(local: boolean) {
     const root = local ? (await import('node:path')).dirname(process.cwd()) : undefined;
     // Muted projects' tasks never reach the pulse; archived ones are only a jump to their page
     const archived = t.archived.map(p => ({ label: p.name, hint: 'Archived project', href: `/projects/${p.repo}`, project: p.repo }));
-    return { icons, beats: beats(t.tasks, sessions, t.idle), jumps: [...jumps(t.sites, { account: process.env.CLOUDFLARE_ACCOUNT_ID, neon: neon.projects, root }), ...archived], sites: t.sites.map(s => s.p) };
+    const pulse = beats(t.tasks, sessions, t.idle);
+    const claude = pulse.filter(b => b.kind === 'claude').length;
+    return { icons, beats: pulse, counts: { '/work': t.tasks.length + claude, '/claude': claude }, jumps: [...jumps(t.sites, { account: process.env.CLOUDFLARE_ACCOUNT_ID, neon: neon.projects, root }), ...archived], sites: t.sites.map(s => s.p) };
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
@@ -56,9 +58,9 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
                     browsers fetch it cookie-less, Access answers with its login page, and install quietly fails. React puts this in <head>. */}
                 <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
                 <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-fg focus:px-4 focus:py-2 focus:text-canvas">Skip to content</a>
-                {owner && <><IconStyles icons={owner.icons} sites={owner.sites} /><Live beats={owner.beats} /><Palette jumps={owner.jumps} local={local} /></>}
+                {owner && <><IconStyles icons={owner.icons} sites={owner.sites} /><Live beats={owner.beats} local={local} /><Palette jumps={owner.jumps} local={local} /></>}
                 <div className="lg:grid lg:grid-cols-[14rem_minmax(0,1fr)] lg:folded:grid-cols-[4rem_minmax(0,1fr)]">
-                    <Nav local={local} />
+                    <Nav local={local} counts={owner?.counts} />
                     {/* Full width by choice (the owner's call), with page-edge padding only; pb-28 keeps the end of a page above the phone's tab bar */}
                     <main id="main" className="min-w-0 px-4 pb-28 pt-6 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">{children}</main>
                 </div>

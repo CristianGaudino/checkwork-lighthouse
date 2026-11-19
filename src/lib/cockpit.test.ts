@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildActivity } from './activity';
 import { checkBatch, checkWorkflow, mergeAll, rerunFailed } from './act';
-import { needsYou } from './claude';
+import { needsYou, overlay, sessionKey } from './claude';
+import { cutPatch } from './pr';
 import { dollars, monthStart, plans } from './costs';
 import { iconHrefs, iconsByRepo, initials, subLetter } from './icons';
 import { matchServers } from './local';
@@ -100,6 +101,39 @@ it('counts a finished or stuck session as needing you for twelve hours, a questi
     expect(needsYou(s('blocked', '2026-11-13T11:50:00Z'), NOW)).toBe(true);
     expect(needsYou(s('question', '2026-11-12T00:00:00Z'), NOW)).toBe(true);
     expect(needsYou(s('working', '2026-11-13T11:59:00Z'), NOW)).toBe(false);
+});
+
+it('lets a session marked done stop needing you', () => {
+    const s = { id: 'x', repo: 'a', title: 't', state: 'question' as const, at: '2026-11-13T11:00:00Z', prUrl: null, questions: [] };
+    expect(needsYou(s, NOW)).toBe(true);
+    expect(needsYou({ ...s, done: true }, NOW)).toBe(false);
+});
+
+it('trusts a run and the permission hook over the transcript', () => {
+    const s = { id: 'x', repo: 'a', title: 't', state: 'blocked' as const, at: '2026-11-13T11:59:00Z', prUrl: null, questions: [] };
+    // A permission request from a run on this page asks at once, not after five minutes
+    const asked = overlay(s, { run: { state: 'working', asks: [{ kind: 'permission', summary: 'run npm test', questions: [] }] } });
+    expect(asked.state).toBe('question');
+    expect(asked.questions[0].text).toBe('Wants to run npm test');
+    expect(needsYou(asked, NOW)).toBe(true);
+    expect(overlay(s, { run: { state: 'working', asks: [] } }).state).toBe('working');
+    // The hook's note counts only while it is newer than the transcript's last turn
+    expect(overlay(s, { marker: { type: 'permission_prompt', message: 'Claude needs your permission to use Bash', at: '2026-11-13T11:59:30Z' } }).state).toBe('question');
+    expect(overlay(s, { marker: { type: 'permission_prompt', message: 'old', at: '2026-11-13T11:58:00Z' } }).state).toBe('blocked');
+    expect(overlay(s, { marker: { type: 'idle_prompt', at: '2026-11-13T11:59:30Z' } }).state).toBe('blocked');
+});
+
+it('takes Done by the key the page showed, after the overlay', () => {
+    const s = { id: 'x', repo: 'a', title: 't', state: 'blocked' as const, at: '2026-11-13T11:59:00Z', prUrl: null, questions: [] };
+    const shown = overlay(s, { run: { state: 'working', asks: [{ kind: 'permission', summary: 'edit a file', questions: [] }] } });
+    // The Done button sends sessionKey(shown); readSessions marks done when the cookie has that same key
+    expect(sessionKey(shown)).not.toBe(sessionKey(s));
+    expect(needsYou({ ...shown, done: true }, NOW)).toBe(false);
+});
+
+it('cuts a long diff and says how much is left', () => {
+    expect(cutPatch('a\nb\nc', 2)).toBe('a\nb\n… 1 more line on GitHub');
+    expect(cutPatch('a\nb', 2)).toBe('a\nb');
 });
 
 describe('writes to GitHub', () => {

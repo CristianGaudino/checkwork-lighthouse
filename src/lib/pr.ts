@@ -84,3 +84,18 @@ export async function fetchPreview(token: string, repo: string, sha: string): Pr
     const latest = Statuses.parse(await statuses.json())[0];
     return latest?.state === 'success' && latest.environment_url?.startsWith('https://') ? latest.environment_url : null;
 }
+
+const MAX_LINES = 400; // a file's diff past this is cut, with GitHub a tap away
+const Files = z.array(z.object({ filename: z.string(), patch: z.string().optional() }));
+/** Each file's diff by path, cut to a readable length. A binary or huge file has none (GitHub leaves it out). Asked apart, so a refusal costs only the diffs. */
+export async function fetchPatches(token: string, repo: string, number: number): Promise<Map<string, string>> {
+    const res = await githubRest(token, `${repo}/pulls/${number}/files?per_page=100`);
+    if (!res.ok) throw new Error(`GitHub files for ${repo}#${number}: ${res.status}`);
+    // The first 30 files: a page with a hundred diffs in it is slow on a phone, and the rest are a tap away on GitHub
+    return new Map(Files.parse(await res.json()).slice(0, 30).flatMap(f => (f.patch ? [[f.filename, cutPatch(f.patch)] as const] : [])));
+}
+
+export function cutPatch(patch: string, max = MAX_LINES): string {
+    const lines = patch.split('\n');
+    return lines.length > max ? [...lines.slice(0, max), `… ${lines.length - max} more line${lines.length - max === 1 ? '' : 's'} on GitHub`].join('\n') : patch;
+}

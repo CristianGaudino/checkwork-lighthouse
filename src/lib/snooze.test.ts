@@ -25,3 +25,8 @@ it('only lets a release bump the workflow offers through', () => {
     expect([checkBump('patch'), checkBump('minor'), checkBump('major')]).toEqual(['patch', 'minor', 'major']);
     expect([checkBump('huge'), checkBump(null), checkBump('')]).toEqual([null, null, null]);
 });
+
+it("keeps one Done per Claude session, so stale ones don't crowd out task snoozes", () => {
+    const s = snooze({ 'claude abc waiting 1': 5, 'claude abcd waiting 1': 5, task: 9 }, 'claude abc question 2', 1, 0);
+    expect(Object.keys(s).sort()).toEqual(['claude abc question 2', 'claude abcd waiting 1', 'task']);
+});

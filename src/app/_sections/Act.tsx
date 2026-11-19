@@ -15,13 +15,16 @@ function Result({ state }: { state: ActResult }) {
     return null;
 }
 
-/** One button that changes something on GitHub. `confirm` asks first with the phone's own dialog, for anything hard to undo. */
-export function ActButton({ action, label, fields, confirm }: { action: Action; label: string; fields: Record<string, string>; confirm?: string }) {
+/**
+ * One button that changes something on GitHub. `confirm` asks first with the phone's own dialog, for anything hard to undo.
+ * `quiet`: a text button, to sit among a task's links.
+ */
+export function ActButton({ action, label, fields, confirm, quiet }: { action: Action; label: string; fields: Record<string, string>; confirm?: string; quiet?: boolean }) {
     const [state, run, pending] = useActionState(action, {});
     return (
-        <form action={run} onSubmit={e => { if (confirm && !window.confirm(confirm)) e.preventDefault(); }} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <form action={run} onSubmit={e => { if (confirm && !window.confirm(confirm)) e.preventDefault(); }} className={quiet ? 'contents' : 'flex flex-wrap items-center gap-x-3 gap-y-1'}>
             {Object.entries(fields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
-            {!state.ok && <button type="submit" disabled={pending} className={button}>{pending ? <>Working<Dots /></> : label}</button>}
+            {!state.ok && <button type="submit" disabled={pending} className={quiet ? 'underline-offset-4 hover:text-fg hover:underline disabled:opacity-60' : button}>{pending ? <>Working<Dots /></> : label}</button>}
             <span aria-live="polite"><Result state={state} /></span>
         </form>
     );
