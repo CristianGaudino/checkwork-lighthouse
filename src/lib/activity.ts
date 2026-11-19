@@ -64,10 +64,10 @@ export function buildActivity(sites: Site[], history: unknown[], failed: (Failed
             ...(h?.issues.nodes ?? []).map(is => ({ at: is.createdAt, repo: p.repo, kind: 'issue' as const, text: `New issue #${is.number} ${is.title}${who(is.author)}`, href: is.url })),
             ...(h?.releases.nodes ?? []).flatMap(r => (r.publishedAt ? [{ at: r.publishedAt, repo: p.repo, kind: 'release' as const, text: `Released ${r.name || r.tagName}`, href: r.url }] : [])),
             ...(failed[i] ?? []).map(r => ({ at: r.created_at, repo: p.repo, kind: 'failed' as const, text: `${r.name ?? 'A workflow'} failed${r.head_branch ? ` on ${r.head_branch}` : ''}`, href: r.html_url })),
-            ...(live && live.state !== 'deploying' ? [{ at: live.since, repo: p.repo, kind: 'deployed' as const, text: 'Deployed', href: `https://${p.site}` }] : []),
-            ...(changed && u?.state === 'down' ? [{ at: changed, repo: p.repo, kind: 'down' as const, text: `${p.site.replace(/^www\./, '')} went down`, href: `https://dashboard.uptimerobot.com/monitors/${u.id}` }] : []),
+            ...(live && live.state !== 'deploying' ? [{ at: live.since, repo: p.repo, kind: 'deployed' as const, text: 'Deployed', href: p.site ? `https://${p.site}` : `https://github.com/${OWNER}/${p.repo}/deployments` }] : []),
+            ...(changed && u?.state === 'down' ? [{ at: changed, repo: p.repo, kind: 'down' as const, text: `${(p.site ?? p.repo).replace(/^www\./, '')} went down`, href: `https://dashboard.uptimerobot.com/monitors/${u.id}` }] : []),
             // Up for under a week means it changed state lately: most likely it was down before
-            ...(changed && u?.state === 'up' ? [{ at: changed, repo: p.repo, kind: 'up' as const, text: `${p.site.replace(/^www\./, '')} came back up`, href: `https://dashboard.uptimerobot.com/monitors/${u.id}` }] : []),
+            ...(changed && u?.state === 'up' ? [{ at: changed, repo: p.repo, kind: 'up' as const, text: `${(p.site ?? p.repo).replace(/^www\./, '')} came back up`, href: `https://dashboard.uptimerobot.com/monitors/${u.id}` }] : []),
         ];
     });
     return events.filter(e => now - Date.parse(e.at) < WINDOW_MS).sort((a, b) => b.at.localeCompare(a.at)).slice(0, MAX);

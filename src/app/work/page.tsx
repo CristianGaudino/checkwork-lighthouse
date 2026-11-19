@@ -1,7 +1,6 @@
 import { Suspense } from 'react';
 import { Gate } from '../_sections/Gate';
 import { requireAdmin } from '@/lib/access';
-import { PROJECTS } from '../../../lighthouse.config';
 import { loadToday } from '../_data';
 import { newIssue, wakeAll } from '../act';
 import { NewIssue } from '../_sections/Act';
@@ -24,6 +23,7 @@ async function Work(props: PageProps<'/work'>) {
     const start = { repo: one(q.repo), title: one(q.title), body: one(q.body) };
     const local = process.env.NODE_ENV === 'development';
     const t = await loadToday();
+    const quiet = [...t.idle, ...t.muted];
     return (
         <>
             <PageTitle sub={t.tasks.length ? 'Worst first' : undefined}>{t.tasks.length ? `${t.tasks.length} to do` : 'Nothing to do'}</PageTitle>
@@ -40,7 +40,12 @@ async function Work(props: PageProps<'/work'>) {
                         {n(t.snoozed, 'task')} snoozed. <button type="submit" className={`${link} text-fg`}>Show {t.snoozed === 1 ? 'it' : 'them'} again</button>
                     </form>
                 )}
-                <NewIssue action={newIssue} repos={PROJECTS.map(p => ({ repo: p.repo, name: p.name }))} start={start} />
+                {quiet.length > 0 && (
+                    <Section title="Idle and muted" aside="Not counted">
+                        <Suspense fallback={<p className="mt-3 text-sm text-fg-muted">Loading</p>}><Tasks tasks={quiet} local={local} /></Suspense>
+                    </Section>
+                )}
+                <NewIssue action={newIssue} repos={t.rows.map(p => ({ repo: p.repo, name: p.name }))} start={start} />
                 <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
                     <Board local={local} />
                 </Suspense>

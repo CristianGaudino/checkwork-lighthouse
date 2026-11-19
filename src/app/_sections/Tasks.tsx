@@ -2,8 +2,8 @@ import { askHref } from '@/lib/vscode';
 import { listRepos } from '@/lib/local';
 import { canSnooze, SNOOZE_DAYS } from '@/lib/snooze';
 import { taskKey, type Task } from '@/lib/today';
-import { OWNER, PROJECTS } from '../../../lighthouse.config';
-import { withFailures } from '../_data';
+import { OWNER } from '../../../lighthouse.config';
+import { loadProjects, withFailures } from '../_data';
 import { approvePr, mergeBatch, mergePr, rerun, runDeploy, runRelease, snoozeTask } from '../act';
 import { incidentHelp } from '../ask';
 import { ActButton, ReleaseButton } from './Act';
@@ -21,8 +21,6 @@ export const DeployLink = ({ repo }: { repo: string }) => (
     <a className={`${link} text-fg`} href={askHref(deployPrompt(repo))} title="Opens Claude Code in VS Code with the deploy steps">Deploy from this PC</a>
 );
 
-const repoOf = (project: string) => PROJECTS.find(p => p.name === project)?.repo;
-
 /** Where a task's repo sits on this PC, so Claude Code works in the right folder whichever one VS Code has open. */
 const folder = (repo: string) => `${process.cwd().replace(/[\\/][^\\/]+$/, '')}/${repo}`;
 
@@ -38,6 +36,8 @@ const issueHref = (t: Task, repo: string) => `/work?${new URLSearchParams({ repo
 export async function Tasks({ tasks: listed, compact, local }: { tasks: Task[]; compact?: boolean; local?: boolean }) {
     const tasks = compact ? listed : await withFailures(listed);
     const here = local && !compact ? await listRepos() : null;
+    const projects = await loadProjects();
+    const repoOf = (project: string) => projects.find(p => p.name === project)?.repo;
     // On this PC the session runs on the Claude page; elsewhere (or a repo not cloned here) VS Code opens it
     const claude = (repo: string, label: string, text: string, title: string, strong?: boolean) => (here?.includes(repo)
         ? <><StartClaude repo={repo} text={text} label={label} className={`${link} ${strong ? 'text-fg' : ''}`} /><a className={link} href={askHref(`Work in ${folder(repo)}. ${text}`)} title="Opens Claude Code in VS Code instead">VS Code</a></>

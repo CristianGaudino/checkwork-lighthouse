@@ -1,11 +1,11 @@
 /**
- * The projects Lighthouse watches. To add one, add a line: the GitHub repo (under OWNER), the live address, and the
- * GitHub project number (the number in its URL, github.com/users/<owner>/projects/<n>). Uptime is matched by the
- * address, so the UptimeRobot monitor needs no id here.
+ * Lighthouse watches every repo OWNER has (src/lib/repos.ts). A line here gives one a nicer name, its live address and
+ * its GitHub project number (the number in its URL, github.com/users/<owner>/projects/<n>); without one, a repo goes by
+ * its name and the homepage set on GitHub. Uptime is matched by the address, so the UptimeRobot monitor needs no id here.
  */
 export const OWNER = 'CristianGaudino';
 
-export type Project = { name: string; repo: string; site: string; project: number };
+export type Project = { name: string; repo: string; site?: string; project?: number };
 
 export const PROJECTS: Project[] = [
     { name: 'Checkwork', repo: 'checkwork', site: 'www.checkwork.ie', project: 7 },
@@ -16,4 +16,6 @@ export const PROJECTS: Project[] = [
     { name: 'Blacktail Archive', repo: 'blacktail', site: 'www.blacktailarchive.cgaudino.com', project: 5 },
     { name: 'Portfolio', repo: 'portfolio', site: 'www.cgaudino.com', project: 2 },
     { name: 'Checkwork Lighthouse', repo: 'checkwork-lighthouse', site: 'www.lighthouse.checkwork.ie', project: 9 },
+    { name: 'Anti-social', repo: 'Anti-social', site: 'antisocial.cgaudino.com' },
+    { name: 'MotorBid', repo: 'MotorBid', site: 'motor-bid.vercel.app' },
 ];

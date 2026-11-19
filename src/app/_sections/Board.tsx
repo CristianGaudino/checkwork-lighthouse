@@ -1,8 +1,7 @@
-import { automationGaps, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
+import { automationGaps, BOARDS, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
 import { askHref } from '@/lib/vscode';
 import { listRepos } from '@/lib/local';
 import { memo, MINUTE } from '@/lib/memo';
-import { PROJECTS } from '../../../lighthouse.config';
 import { StartClaude } from './NewSession';
 import { ProjectIcon } from './ProjectIcon';
 import { ext, link, Problem, Section, Setup } from './ui';
@@ -17,18 +16,18 @@ export async function Board({ local, project }: { local: boolean; project?: stri
     let board, gaps;
     try {
         const [items, links] = await Promise.all([
-            memo('board', MINUTE, () => fetchBoardItems(PROJECTS, token)),
-            process.env.GITHUB_TOKEN ? memo('issue-links', MINUTE, () => fetchIssueLinks(PROJECTS, process.env.GITHUB_TOKEN!)) : new Map<string, string>(),
+            memo('board', MINUTE, () => fetchBoardItems(BOARDS, token)),
+            process.env.GITHUB_TOKEN ? memo('issue-links', MINUTE, () => fetchIssueLinks(BOARDS, process.env.GITHUB_TOKEN!)) : new Map<string, string>(),
         ]);
-        board = groupBoard(PROJECTS, items, links);
-        gaps = project ? [] : automationGaps(PROJECTS, items);
+        board = groupBoard(BOARDS, items, links);
+        gaps = project ? [] : automationGaps(BOARDS, items);
     } catch (error) {
         console.error('Could not load the boards', error);
         return <Section title="Board"><Problem>GitHub did not answer, so the board is missing. Reload in a minute.</Problem></Section>;
     }
     // On this PC, Ask Claude starts a session on the Claude page in the card's repo; otherwise VS Code opens it
     const here = local ? await listRepos() : null;
-    const repoOf = (name: string) => PROJECTS.find(p => p.name === name)?.repo;
+    const repoOf = (name: string) => BOARDS.find(p => p.name === name)?.repo;
     const cards = (c: (typeof COLUMNS)[number]) => board.columns[c].filter(card => !project || card.project === project);
     const backlog = board.backlog.filter(b => !project || b.project === project);
     return (

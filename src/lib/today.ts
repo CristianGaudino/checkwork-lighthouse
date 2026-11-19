@@ -73,6 +73,7 @@ export function mainTask(p: Project, r: RepoStatus | undefined, live: LiveState 
 const MONITORS = 'https://dashboard.uptimerobot.com/monitors';
 
 function uptimeTask(p: Project, u: Uptime | null): Task | null {
+    if (!p.site) return null; // nothing to watch
     const site = p.site.replace(/^www\./, '');
     if (!u) return { project: p.name, level: 2, action: 'Add a monitor for', title: site, detail: 'UptimeRobot is not watching it', href: MONITORS };
     if (u.state === 'down') return { project: p.name, level: 1, action: 'Site down:', title: site, detail: u.seconds === null ? 'Per UptimeRobot' : `Down for ${span(u.seconds)}`, href: `${MONITORS}/${u.id}`, incidentRepo: p.repo, fix: `${site} is down. Find out why from the newest commits and deploys on main, and say what to do before changing anything.` };

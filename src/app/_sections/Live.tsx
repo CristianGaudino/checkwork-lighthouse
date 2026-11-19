@@ -67,7 +67,7 @@ export function Live({ beats }: { beats: Beat[] }) {
         return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
     }, [router]);
 
-    const count = beats.length;
+    const count = beats.filter(b => !b.quiet).length;
     useEffect(() => {
         // Next writes the page's <title> itself, after this runs and on every navigation, so the count goes back on
         // whenever the title changes; setting it fires the observer once more, finds it right, and stops

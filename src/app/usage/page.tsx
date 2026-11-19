@@ -23,7 +23,7 @@ async function Usage() {
                 <Analytics rows={t.rows} data={t.analytics.data} problem={t.analytics.problem} setup={t.analytics.setup} />
                 {t.usage.minutes && <Minutes m={t.usage.minutes} />}
                 <Neon projects={neon.projects} problem={neon.problem} setup={neon.setup} />
-                {!t.problem && <Versions repos={t.repos} />}
+                {!t.problem && <Versions projects={t.rows} repos={t.repos} />}
             </div>
         </>
     );

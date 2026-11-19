@@ -27,9 +27,11 @@ export default function Page() {
 async function Overview() {
     await requireAdmin();
     const [t, activity, sessions] = await Promise.all([loadToday(), loadActivity(), readSessions()]);
-    const monitored = t.sites.filter(s => s.p.uptime);
+    // Idle and muted projects stay out of the counts, as their tasks do
+    const active = t.sites.filter(s => s.status === 'active');
+    const monitored = active.filter(s => s.p.uptime);
     const up = monitored.filter(s => s.p.uptime?.state === 'up').length;
-    const behind = t.sites.filter(s => s.live?.state === 'behind').length;
+    const behind = active.filter(s => s.live?.state === 'behind').length;
     // The same words as Work ("6 to do"), with Claude sessions said apart; the tab title counts both (src/lib/pulse.ts)
     const claude = sessions?.filter(s => needsYou(s)) ?? [];
     const waiting = claude.length > 0 && `${n(claude.length, 'Claude session')} waiting`;

@@ -9,8 +9,11 @@ import { readLocalRepos } from '@/lib/local';
 import { severe } from '@/lib/security';
 import { setupChecks } from '@/lib/setup';
 import { ago } from '@/lib/today';
-import { OWNER, PROJECTS } from '../../../../lighthouse.config';
-import { loadMissingSettings, loadToday, loadWorkerErrors } from '../../_data';
+import { STATUS_MEANS, type Listed } from '@/lib/repos';
+import { OWNER } from '../../../../lighthouse.config';
+import { setRepoStatus } from '../../act';
+import { loadMissingSettings, loadProjects, loadToday, loadWorkerErrors } from '../../_data';
+import { StatusPicker } from '../../_sections/Act';
 import { Board } from '../../_sections/Board';
 import { ClaudeSessions } from '../../_sections/Claude';
 import { Git } from '../../_sections/Pc';
@@ -20,31 +23,35 @@ import { DeployLink, Tasks } from '../../_sections/Tasks';
 import { Versions } from '../../_sections/Usage';
 import { Dot, ext, link, num, PageTitle, panel, Problem, Section, Setup } from '../../_sections/ui';
 
-const find = (repo: string) => PROJECTS.findIndex(p => p.repo === repo);
+// Any of the owner's repos, archived ones too: those are hidden from the lists, not gone
+const find = async (repo: string) => (await loadProjects()).find(p => p.repo === repo);
 const date = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 export async function generateMetadata(props: PageProps<'/projects/[repo]'>) {
-    const i = find((await props.params).repo);
-    return { title: i < 0 ? 'Not found' : PROJECTS[i].name };
+    const p = await find((await props.params).repo);
+    return { title: p ? p.name : 'Not found' };
 }
 
 /** Everything about one project on one page: how its site is doing, what it needs, its board, and this PC's side of it. */
 export default async function Page(props: PageProps<'/projects/[repo]'>) {
-    if (find((await props.params).repo) < 0) notFound();
+    if (!(await find((await props.params).repo))) notFound();
     return <Gate><Project {...props} /></Gate>;
 }
 
 async function Project(props: PageProps<'/projects/[repo]'>) {
     await requireAdmin();
-    const i = find((await props.params).repo);
-    if (i < 0) notFound();
+    const listed = await find((await props.params).repo);
+    if (!listed) notFound();
+    if (listed.status === 'archived') return <Archived p={listed} />;
     const local = process.env.NODE_ENV === 'development';
     const [t, pc, sessions] = await Promise.all([loadToday(), readLocalRepos(), readSessions()]);
-    const { p, live, worker, light, alerts, expires } = t.sites[i];
-    const traffic = t.analytics.data?.traffic.get(siteKey(p.site));
+    const site = t.sites.find(s => s.p.repo === listed.repo);
+    if (!site) notFound();
+    const { p, live, worker, light, alerts, expires, status } = site;
+    const traffic = p.site ? t.analytics.data?.traffic.get(siteKey(p.site)) : undefined;
     const w = worker ? t.analytics.data?.workers.get(worker) : undefined;
     const release = p.repoStatus?.release;
-    const tasks = t.tasks.filter(x => x.project === p.name);
+    const tasks = [...t.tasks, ...t.idle, ...t.muted].filter(x => x.project === p.name);
     const gh = `https://github.com/${OWNER}/${p.repo}`;
     const checks = setupChecks({ repo: p.repoStatus ?? undefined, uptime: p.uptime, analytics: Boolean(t.analytics.data), traffic, live, alerts });
     const missing = checks.filter(c => c.done === false);
@@ -67,9 +74,9 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
         <>
             <PageTitle sub={
                 <span className="flex flex-wrap gap-x-4 gap-y-1">
-                    <a {...ext} className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>
+                    {p.site && <a {...ext} className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>}
                     <a {...ext} className={link} href={gh}>Repo</a>
-                    <a {...ext} className={link} href={`https://github.com/users/${OWNER}/projects/${p.project}`}>Board</a>
+                    {p.project && <a {...ext} className={link} href={`https://github.com/users/${OWNER}/projects/${p.project}`}>Board</a>}
                     <a {...ext} className={link} href={`${gh}/actions`}>Actions</a>
                     {local && live?.state === 'behind' && worker && <DeployLink repo={p.repo} />}
                 </span>
@@ -77,6 +84,7 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                 <span className="flex items-center gap-3"><Dot light={t.problem ? null : light} className="size-2.5" /><ProjectIcon project={p.repo} className="size-9 rounded-lg text-sm" />{p.name}</span>
             </PageTitle>
             {t.problem && <Problem>{t.problem}</Problem>}
+            <StatusLine repo={p.repo} status={status} />
 
             <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line text-sm tabular-nums sm:grid-cols-4">
                 {facts.map(([label, value, tone]) => (
@@ -113,9 +121,11 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                     <WorkerHealth worker={worker} deployedAt={worker ? t.deploys.deployed?.get(worker) : undefined} names={p.repoStatus?.envNames} />
                 </Suspense>
 
-                <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
-                    <Board local={local} project={p.name} />
-                </Suspense>
+                {p.project && (
+                    <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
+                        <Board local={local} project={p.name} />
+                    </Suspense>
+                )}
 
                 {traffic && traffic.topPaths.length > 0 && (
                     <Section title="Top pages" aside="Page views, 7 days">
@@ -129,11 +139,38 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                     </Section>
                 )}
 
-                {!t.problem && <Versions repos={t.repos} only={p.repo} />}
+                {!t.problem && <Versions projects={t.rows} repos={t.repos} only={p.repo} />}
 
                 {sessions && <ClaudeSessions title="Claude sessions" sessions={sessions.filter(s => s.repo === p.repo)} />}
                 {pc?.repos.some(r => r.name === p.repo) && <Git title="On this PC" root={pc.root} repos={pc.repos.filter(r => r.name === p.repo)} />}
             </div>
+        </>
+    );
+}
+
+/** The repo's status and what it means. */
+const StatusLine = ({ repo, status }: { repo: string; status: Listed['status'] }) => (
+    <div className="mt-4 grid gap-1 text-sm">
+        <StatusPicker action={setRepoStatus} repo={repo} status={status} />
+        <p className="text-fg-muted">{STATUS_MEANS}</p>
+    </div>
+);
+
+/** An archived repo: Lighthouse loads nothing for it, so its page is where to bring it back. */
+function Archived({ p }: { p: Listed }) {
+    const gh = `https://github.com/${OWNER}/${p.repo}`;
+    return (
+        <>
+            <PageTitle sub={
+                <span className="flex flex-wrap gap-x-4 gap-y-1">
+                    {p.site && <a {...ext} className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>}
+                    <a {...ext} className={link} href={gh}>Repo</a>
+                </span>
+            }>
+                <span className="flex items-center gap-3"><ProjectIcon project={p.repo} className="size-9 rounded-lg text-sm" />{p.name}</span>
+            </PageTitle>
+            <p className="mt-6 text-sm text-fg-muted">Archived, so Lighthouse loads nothing for it. Pick another status to bring it back.</p>
+            <StatusLine repo={p.repo} status={p.status} />
         </>
     );
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { githubGraphql } from './github';
-import { OWNER, type Project } from '../../lighthouse.config';
+import { OWNER, PROJECTS, type Project } from '../../lighthouse.config';
 
 /**
  * The open work across every project board, by Status. Projects belong to the user account, which fine-grained tokens
@@ -25,6 +25,10 @@ const ProjectItems = z.object({ projectV2: z.object({ items: z.object({ nodes: z
 
 export type ProjectData = { items: unknown[]; workflows: z.infer<typeof Workflow>[] } | null;
 
+/** The config lines with a project board: only those have one to read. */
+type Boarded = Project & { project: number };
+export const BOARDS = PROJECTS.filter((p): p is Boarded => p.project !== undefined);
+
 // shortcut: the first 100 open items per project (How Many? has 50 today); page with the cursor if a board outgrows it
 const ITEMS = `items(first: 100, query: "-status:Done is:open") { nodes {
     type title: fieldValueByName(name: "Title") { ... on ProjectV2ItemFieldTextValue { text } }
@@ -45,7 +49,7 @@ export async function fetchIssueLinks(projects: Project[], token: string): Promi
 }
 
 /** Each project's open items and its automations (the built-in workflows), in config order; null where the token can't read it. */
-export async function fetchBoardItems(projects: Project[], token: string): Promise<ProjectData[]> {
+export async function fetchBoardItems(projects: Boarded[], token: string): Promise<ProjectData[]> {
     const query = `{ ${projects.map((p, i) => `p${i}: user(login: ${JSON.stringify(OWNER)}) { projectV2(number: ${p.project}) { ${ITEMS} workflows(first: 20) { nodes { name enabled } } } }`).join('\n')} }`;
     const data = (await githubGraphql(token, query)) ?? {};
     return projects.map((_, i) => {
@@ -58,7 +62,7 @@ export async function fetchBoardItems(projects: Project[], token: string): Promi
  * Automations a project has off (or lacks) that another project has on, so every board behaves the same. GitHub's API
  * can read these but not switch them on, so the page links to each board's settings.
  */
-export function automationGaps(projects: Project[], data: ProjectData[]) {
+export function automationGaps(projects: Boarded[], data: ProjectData[]) {
     const used = new Set(data.flatMap(d => d?.workflows.filter(w => w.enabled).map(w => w.name) ?? []));
     return projects.flatMap((p, i) => {
         const d = data[i];
@@ -69,7 +73,7 @@ export function automationGaps(projects: Project[], data: ProjectData[]) {
     });
 }
 
-export function groupBoard(projects: Project[], data: ProjectData[], links: Map<string, string>): Board {
+export function groupBoard(projects: Boarded[], data: ProjectData[], links: Map<string, string>): Board {
     const columns = Object.fromEntries(COLUMNS.map(c => [c, [] as Card[]])) as Record<Column, Card[]>;
     const backlog: Board['backlog'] = [];
     projects.forEach((p, i) => {

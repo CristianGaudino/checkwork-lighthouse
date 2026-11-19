@@ -1,19 +1,21 @@
-import { OWNER, PROJECTS } from '../../lighthouse.config';
+import { OWNER } from '../../lighthouse.config';
 import { FAILED } from './github';
+import { stale, STATUSES, swapTopic, type Status } from './repos';
 
 /**
  * The few things Lighthouse can change on GitHub: approve a PR, merge it (or a batch of Dependabot PRs), open an issue,
- * re-run failed jobs and run a deploy workflow. They use GITHUB_WRITE_TOKEN,
+ * re-run failed jobs, run a deploy workflow and set a repo's status. They use GITHUB_WRITE_TOKEN,
  * a separate fine-grained token, so the token behind every page load stays read-only.
  */
 
 export type ActResult = { ok?: string; href?: string; error?: string };
 export const ISSUE_TYPES = ['Task', 'Bug', 'Feature'] as const;
 
-/** Form input is untrusted: only a configured repo, a positive PR number, and a sane title get through. */
-export function checkRepo(value: unknown): string | null {
-    return PROJECTS.some(p => p.repo === value) ? (value as string) : null;
+/** Form input is untrusted: only one of the owner's repos (`known`, as listed), a positive PR number, and a sane title get through. */
+export function checkRepo(value: unknown, known: { repo: string }[]): string | null {
+    return known.some(p => p.repo === value) ? (value as string) : null;
 }
+export const checkStatus = (value: unknown): Status | null => ((STATUSES as readonly string[]).includes(value as string) ? (value as Status) : null);
 export function checkNumber(value: unknown): number | null {
     const n = Number(value);
     return Number.isInteger(n) && n > 0 ? n : null;
@@ -40,7 +42,10 @@ export function checkIssue(form: { title: unknown; body: unknown; type: unknown 
     return { title, body, type };
 }
 
-type GhJson = { message?: string; html_url?: string; number?: number; workflow_runs?: { id: number; conclusion: string | null }[] };
+type GhJson = {
+    message?: string; html_url?: string; number?: number; workflow_runs?: { id: number; conclusion: string | null }[];
+    topics?: string[]; pushed_at?: string | null; archived?: boolean;
+};
 
 async function github(token: string, method: string, path: string, body?: object) {
     const res = await fetch(`https://api.github.com/repos/${OWNER}/${path}`, {
@@ -108,4 +113,15 @@ export async function mergeAll(token: string, repo: string, prs: { number: numbe
     const list = (ns: number[]) => ns.map(n => `#${n}`).join(', ');
     if (!merged.length) return { error: `GitHub merged none of ${list(left)}. Open them to see why.` };
     return { ok: `Merged ${list(merged)}${left.length ? `. ${list(left)} not merged, open ${left.length === 1 ? 'it' : 'them'} to see why` : ''}` };
+}
+
+/** Saves a repo's status as its lighthouse topic: reads the topics, swaps only that one, and writes the whole list back. */
+export async function setStatus(token: string, repo: string, status: Status, now = Date.now()): Promise<ActResult> {
+    const got = await github(token, 'GET', repo);
+    if (got.status !== 200) return refused(got.status, got.json.message);
+    if (got.json.archived) return { error: 'GitHub archived this repo, so its topics are read-only. Unarchive it on GitHub first.' };
+    const names = swapTopic(got.json.topics ?? [], status, stale(got.json.pushed_at ?? null, now));
+    const r = await github(token, 'PUT', `${repo}/topics`, { names });
+    if (r.status === 403) return { error: 'GitHub refused: GITHUB_WRITE_TOKEN needs Administration: Read and write to set topics.' };
+    return r.status === 200 ? { ok: `Saved as ${status}` } : refused(r.status, r.json.message);
 }

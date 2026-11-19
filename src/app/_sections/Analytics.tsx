@@ -6,7 +6,7 @@ import { cell, num, panel, Problem, Section, Setup } from './ui';
 
 const pct = new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDigits: 1 });
 
-type Row = { name: string; site: string; worker: string | null };
+type Row = { name: string; site?: string; worker: string | null };
 
 /** Visits (Web Analytics, 7 days) and Worker health (24 hours) per site. A dash means no data, often Web Analytics not on yet. */
 export function Analytics({ rows, data, problem, setup }: { rows: Row[]; data?: Data; problem?: string; setup?: string }) {
@@ -23,8 +23,9 @@ export function Analytics({ rows, data, problem, setup }: { rows: Row[]; data?: 
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-line">
-                            {rows.map(r => {
-                                const t = data.traffic.get(siteKey(r.site));
+                            {/* A repo with no site and no Worker has nothing to show here */}
+                            {rows.filter(r => r.site || r.worker).map(r => {
+                                const t = r.site ? data.traffic.get(siteKey(r.site)) : undefined;
                                 const w = r.worker ? data.workers.get(r.worker) : undefined;
                                 const rate = w && w.requests ? w.errors / w.requests : 0;
                                 return (

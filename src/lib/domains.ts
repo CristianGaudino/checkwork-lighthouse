@@ -37,6 +37,7 @@ const WARN_DAYS = 30, URGENT_DAYS = 7;
 export function domainTasks(projects: Project[], expiry: Map<string, string>, now = Date.now()): Task[] {
     const seen = new Set<string>();
     return projects.flatMap(p => {
+        if (!p.site) return [];
         const d = domainOf(p.site), at = expiry.get(d);
         if (seen.has(d) || !at) return [];
         seen.add(d);

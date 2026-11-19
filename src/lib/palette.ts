@@ -28,12 +28,12 @@ export function jumps(sites: Site[], o: { account?: string; neon?: { id: string;
         const go = (label: string, hint: string, href: string): Jump => ({ label: `${p.name} ${label}`.trim(), hint, href, project: p.repo });
         return [
             go('', 'Project page', `/projects/${p.repo}`),
-            go('site', p.site.replace(/^www\./, ''), `https://${p.site}`),
+            ...(p.site ? [go('site', p.site.replace(/^www\./, ''), `https://${p.site}`)] : []),
             go('repo', 'GitHub', gh),
             go('pull requests', 'GitHub', `${gh}/pulls`),
             go('issues', 'GitHub', `${gh}/issues`),
             go('Actions', 'GitHub', `${gh}/actions`),
-            go('board', 'GitHub project', `https://github.com/users/${OWNER}/projects/${p.project}`),
+            ...(p.project ? [go('board', 'GitHub project', `https://github.com/users/${OWNER}/projects/${p.project}`)] : []),
             go('settings', 'GitHub', `${gh}/settings`),
             worker
                 ? go('Worker', 'Cloudflare', o.account ? `https://dash.cloudflare.com/${o.account}/workers/services/view/${worker}/production` : 'https://dash.cloudflare.com')

@@ -5,9 +5,9 @@ import { fetchFailure } from '@/lib/failure';
 import { memo, MINUTE } from '@/lib/memo';
 import { fetchActionChecks, fetchPr, fetchPreview, type Check } from '@/lib/pr';
 import { ago, canMerge } from '@/lib/today';
-import { OWNER, PROJECTS } from '../../../../../../lighthouse.config';
+import { OWNER } from '../../../../../../lighthouse.config';
 import { approvePr, mergePr } from '../../../../act';
-import { loadToday } from '../../../../_data';
+import { loadProjects, loadToday } from '../../../../_data';
 import { ActButton } from '../../../../_sections/Act';
 import { FailureDetail } from '../../../../_sections/Failure';
 import { Gate } from '../../../../_sections/Gate';
@@ -18,7 +18,7 @@ type Props = PageProps<'/projects/[repo]/pr/[number]'>;
 
 const target = async (props: Props) => {
     const { repo, number } = await props.params;
-    const project = PROJECTS.find(p => p.repo === repo);
+    const project = (await loadProjects()).find(p => p.repo === repo);
     const num = checkNumber(number);
     return project && num ? { project, number: num } : null;
 };
@@ -61,7 +61,7 @@ async function PullRequest(props: Props) {
     const failure = failing && pr.sha ? await quiet('why checks failed', memo(`failure ${pr.sha}`, MINUTE, () => fetchFailure(token, p.repo, pr.sha!))) : null;
 
     // Merge and Approve follow the task list's rules, from the same picture of the repo
-    const status = today.repos[PROJECTS.indexOf(p)];
+    const status = today.repos[today.rows.findIndex(r => r.repo === p.repo)];
     const listed = status?.prs.find(x => x.number === number);
     const open = pr.state === 'OPEN';
     // Never beside a failing check: the page's own reading wins over the task list's minute-old one

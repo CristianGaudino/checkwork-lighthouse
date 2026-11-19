@@ -45,7 +45,7 @@ async function Costs() {
             value: hours === undefined ? '–' : `${num.format(hours)} compute hours this billing period`,
         },
     ];
-    const domains = [...new Map(t.sites.map(s => [domainOf(s.p.site), { repo: s.p.repo, expires: s.expires }])).entries()];
+    const domains = [...new Map(t.sites.flatMap(s => (s.p.site ? [[domainOf(s.p.site), { repo: s.p.repo, expires: s.expires }] as const] : []))).entries()];
 
     return (
         <>
