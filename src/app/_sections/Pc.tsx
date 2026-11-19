@@ -20,7 +20,7 @@ export function Git({ repos, root, title = 'Repos' }: { repos: LocalRepo[]; root
                         return (
                             <li key={r.name} className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[minmax(9rem,12rem)_1fr_auto]">
                                 <span className="flex items-center gap-3 font-medium"><ProjectIcon project={r.name} />{r.name}</span>
-                                <a className={`${link} text-fg-muted sm:order-last`} href={`vscode://file/${root.replace(/\\/g, '/')}/${r.name}`}>Open in VS Code</a>
+                                <a className={`${link} text-fg-muted sm:order-last`} href={`vscode://file/${root.replace(/\\/g, '/')}/${r.name}`}>VS Code</a>
                                 <div className="col-span-2 grid gap-1 pl-8 sm:col-span-1 sm:pl-0">
                                     <p><span className="text-fg-muted">On {r.branch}</span>{now.length > 0 && <span>, {now.join(', ')}</span>}</p>
                                     {install && <p className="text-warn">{install}</p>}

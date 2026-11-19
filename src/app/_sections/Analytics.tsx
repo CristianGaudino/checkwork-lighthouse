@@ -6,36 +6,38 @@ import { cell, num, panel, Problem, Section, Setup } from './ui';
 
 const pct = new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDigits: 1 });
 
-type Row = { name: string; site: string; worker: string | null };
+type Row = { name: string; site?: string; worker: string | null };
 
-/** Visits (Web Analytics, 7 days) and Worker health (24 hours) per site. A dash means no data, often Web Analytics not on yet. */
+/** Visits (Web Analytics, 7 days) and Worker health (24 hours) per site. A site with neither is left out: its page's Setup says why. */
 export function Analytics({ rows, data, problem, setup }: { rows: Row[]; data?: Data; problem?: string; setup?: string }) {
+    // A row of dashes says nothing
+    const shown = data ? rows.filter(r => (r.site && data.traffic.has(siteKey(r.site))) || (r.worker && data.workers.has(r.worker))) : [];
     return (
         <Section id="traffic" title="Traffic" aside="Visits 7 days, requests 24 hours">
             {setup && <Setup>{setup}</Setup>}
-            {problem ? <Problem>{problem}</Problem> : data && (
+            {problem ? <Problem>{problem}</Problem> : data && !shown.length ? <p className="mt-3 text-sm text-fg-muted">No visits or Worker requests yet.</p> : data && (
                 // relative: keeps a scrolled table's sr-only bits inside its box instead of widening the page
                 <div className="relative mt-3 overflow-x-auto rounded-2xl border border-line">
                     <table className="w-full whitespace-nowrap text-left text-sm tabular-nums">
                         <thead className="text-xs text-fg-muted">
                             <tr className="border-b border-line">
-                                {['Site', 'Visits', 'Page views', 'Top page', 'Requests', 'Errors', 'CPU p99'].map(h => <th key={h} scope="col" className={`${cell} font-normal`}>{h}</th>)}
+                                {['Site', 'Visits', 'Page views', 'Top page', 'Requests', 'Errors', 'CPU p99'].map(h => <th key={h} scope="col" className={`${cell} font-normal ${h === 'Site' || h === 'Top page' ? '' : 'text-right'}`}>{h}</th>)}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-line">
-                            {rows.map(r => {
-                                const t = data.traffic.get(siteKey(r.site));
+                            {shown.map(r => {
+                                const t = r.site ? data.traffic.get(siteKey(r.site)) : undefined;
                                 const w = r.worker ? data.workers.get(r.worker) : undefined;
                                 const rate = w && w.requests ? w.errors / w.requests : 0;
                                 return (
                                     <tr key={r.name}>
                                         <th scope="row" className={`${cell} font-medium`}>{r.name}</th>
-                                        <td className={cell}>{t ? num.format(t.visits) : '–'}</td>
-                                        <td className={cell}>{t ? num.format(t.views) : '–'}</td>
+                                        <td className={`${cell} text-right`}>{t ? num.format(t.visits) : '–'}</td>
+                                        <td className={`${cell} text-right`}>{t ? num.format(t.views) : '–'}</td>
                                         <td className={`${cell} max-w-56 truncate text-fg-muted`}>{t?.topPaths[0]?.path ?? '–'}</td>
-                                        <td className={cell}>{w ? num.format(w.requests) : '–'}</td>
-                                        <td className={`${cell} ${rate > 0.01 ? 'text-bad' : 'text-fg-muted'}`}>{w ? `${num.format(w.errors)} (${pct.format(rate)})` : '–'}</td>
-                                        <td className={`${cell} text-fg-muted`}>{w?.cpuP99 != null ? `${num.format(Math.round(w.cpuP99))} ms` : '–'}</td>
+                                        <td className={`${cell} text-right`}>{w ? num.format(w.requests) : '–'}</td>
+                                        <td className={`${cell} text-right ${rate > 0.01 ? 'text-bad' : 'text-fg-muted'}`}>{w ? `${num.format(w.errors)} (${pct.format(rate)})` : '–'}</td>
+                                        <td className={`${cell} text-right text-fg-muted`}>{w?.cpuP99 != null ? `${num.format(Math.round(w.cpuP99))} ms` : '–'}</td>
                                     </tr>
                                 );
                             })}

@@ -2,10 +2,10 @@ import { automationGaps, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard }
 import { askHref } from '@/lib/vscode';
 import { listRepos } from '@/lib/local';
 import { memo, MINUTE } from '@/lib/memo';
-import { PROJECTS } from '../../../lighthouse.config';
 import { StartClaude } from './NewSession';
 import { ProjectIcon } from './ProjectIcon';
 import { ext, link, Problem, Section, Setup } from './ui';
+import { loadBoards } from '../_data';
 
 /**
  * Open work on the project boards: what is moving, what waits for review, what is next, and each backlog's size.
@@ -14,21 +14,22 @@ import { ext, link, Problem, Section, Setup } from './ui';
 export async function Board({ local, project }: { local: boolean; project?: string }) {
     const token = process.env.GITHUB_PROJECTS_TOKEN;
     if (!token) return <Section title="Board"><Setup>Set GITHUB_PROJECTS_TOKEN (a classic token with only read:project) to see the boards.</Setup></Section>;
+    const boards = await loadBoards();
     let board, gaps;
     try {
         const [items, links] = await Promise.all([
-            memo('board', MINUTE, () => fetchBoardItems(PROJECTS, token)),
-            process.env.GITHUB_TOKEN ? memo('issue-links', MINUTE, () => fetchIssueLinks(PROJECTS, process.env.GITHUB_TOKEN!)) : new Map<string, string>(),
+            memo(`board ${boards.map(p => p.project)}`, MINUTE, () => fetchBoardItems(boards, token)),
+            process.env.GITHUB_TOKEN ? memo(`issue-links ${boards.map(p => p.project)}`, MINUTE, () => fetchIssueLinks(boards, process.env.GITHUB_TOKEN!)) : new Map<string, string>(),
         ]);
-        board = groupBoard(PROJECTS, items, links);
-        gaps = project ? [] : automationGaps(PROJECTS, items);
+        board = groupBoard(boards, items, links);
+        gaps = project ? [] : automationGaps(boards, items);
     } catch (error) {
         console.error('Could not load the boards', error);
         return <Section title="Board"><Problem>GitHub did not answer, so the board is missing. Reload in a minute.</Problem></Section>;
     }
     // On this PC, Ask Claude starts a session on the Claude page in the card's repo; otherwise VS Code opens it
     const here = local ? await listRepos() : null;
-    const repoOf = (name: string) => PROJECTS.find(p => p.name === name)?.repo;
+    const repoOf = (name: string) => boards.find(p => p.name === name)?.repo;
     const cards = (c: (typeof COLUMNS)[number]) => board.columns[c].filter(card => !project || card.project === project);
     const backlog = board.backlog.filter(b => !project || b.project === project);
     return (
@@ -43,10 +44,10 @@ export async function Board({ local, project }: { local: boolean; project?: stri
                     const list = cards(c);
                     return (
                         <div key={c} className="rounded-2xl border border-line">
-                            <h3 className="flex items-baseline justify-between border-b border-line px-4 py-2 text-sm font-medium">
+                            <h3 className={`flex items-baseline justify-between px-4 py-2 text-sm font-medium ${list.length ? 'border-b border-line' : ''}`}>
                                 {c}<span className="font-normal text-fg-muted tabular-nums">{list.length}</span>
                             </h3>
-                            {list.length ? (
+                            {list.length > 0 && (
                                 <ul className="divide-y divide-line">
                                     {list.slice(0, SHOWN).map(card => (
                                         <li key={`${card.project} ${card.title}`} className="px-4 py-3 text-sm">
@@ -64,7 +65,7 @@ export async function Board({ local, project }: { local: boolean; project?: stri
                                         </li>
                                     ))}
                                 </ul>
-                            ) : <p className="px-4 py-3 text-sm text-fg-muted">Nothing here</p>}
+                            )}
                             {list.length > SHOWN && <p className="border-t border-line px-4 py-3 text-sm text-fg-muted">And {list.length - SHOWN} more on the boards</p>}
                         </div>
                     );

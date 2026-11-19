@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import type { ActResult } from '@/lib/act';
 import { BUMPS, ISSUE_TYPES } from '@/lib/act';
+import { STATUSES, type Status } from '@/lib/repos';
 import { Dots } from './ui';
 
 type Action = (prev: ActResult, form: FormData) => Promise<ActResult>;
@@ -40,6 +41,21 @@ export function ReleaseButton({ action, repo }: { action: Action; repo: string }
                     <button type="submit" disabled={pending} className={button}>{pending ? <>Working<Dots /></> : 'Release'}</button>
                 </span>
             )}
+            <span aria-live="polite"><Result state={state} /></span>
+        </form>
+    );
+}
+
+/** A repo's status, saved as a topic on GitHub. */
+export function StatusPicker({ action, repo, status }: { action: Action; repo: string; status: Status }) {
+    const [state, run, pending] = useActionState(action, {});
+    return (
+        <form action={run} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <input type="hidden" name="repo" value={repo} />
+            <select name="status" aria-label={`Status of ${repo}`} defaultValue={status} className="rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-fg">
+                {STATUSES.map(s => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
+            </select>
+            <button type="submit" disabled={pending} className={button}>{pending ? <>Saving<Dots /></> : 'Save'}</button>
             <span aria-live="polite"><Result state={state} /></span>
         </form>
     );

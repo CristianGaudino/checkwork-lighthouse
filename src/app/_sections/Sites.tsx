@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Analytics } from '@/lib/cloudflare';
 import { siteKey } from '@/lib/cloudflare';
 import type { LiveState } from '@/lib/live';
+import type { Status } from '@/lib/repos';
 import { span, type Light, type ProjectState } from '@/lib/today';
 import type { Uptime } from '@/lib/uptime';
 import { ProjectIcon } from './ProjectIcon';
@@ -33,7 +34,7 @@ export function Week({ days }: { days: number[] }) {
     );
 }
 
-export type SiteRow = { p: ProjectState; live: LiveState | null; worker: string | null; light: Light };
+export type SiteRow = { p: ProjectState; live: LiveState | null; worker: string | null; light: Light; status?: Status };
 
 const COLS = 'sm:grid-cols-[minmax(11rem,1.3fr)_minmax(7rem,1fr)_minmax(8rem,1fr)_3.5rem_minmax(7rem,1fr)_4.5rem]';
 
@@ -48,8 +49,8 @@ export function Sites({ rows, analytics, known }: { rows: SiteRow[]; analytics?:
                 <span>Site</span><span>Uptime</span><span>Running</span><span className="text-right">PRs</span><span>Visits, 7 days</span><span className="text-right">Errors</span>
             </div>
             <ul className="divide-y divide-line">
-                {rows.map(({ p, live, worker, light }) => {
-                    const t = analytics?.traffic.get(siteKey(p.site));
+                {rows.map(({ p, live, worker, light, status }) => {
+                    const t = p.site ? analytics?.traffic.get(siteKey(p.site)) : undefined;
                     const w = worker ? analytics?.workers.get(worker) : undefined;
                     const rate = w?.requests ? w.errors / w.requests : 0;
                     const prs = p.repoStatus?.prs.filter(pr => !pr.draft).length;
@@ -61,6 +62,7 @@ export function Sites({ rows, analytics, known }: { rows: SiteRow[]; analytics?:
                                     <Dot light={known ? light : null} />
                                     <ProjectIcon project={p.repo} />
                                     <span className="truncate text-[15px] font-medium">{p.name}</span>
+                                    {status && status !== 'active' && <span className="shrink-0 text-xs text-fg-muted">{status[0].toUpperCase() + status.slice(1)}</span>}
                                 </span>
                                 <span className={down ? 'text-bad' : 'text-fg-muted'}>{uptimeText(p.uptime)}</span>
                                 <span className={`hidden sm:block ${live?.state === 'behind' ? 'text-warn' : 'text-fg-muted'}`}>{liveText(live)}</span>

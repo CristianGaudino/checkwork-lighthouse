@@ -22,6 +22,10 @@ In UptimeRobot, add an HTTP(s) monitor for `https://` plus the address in the co
 
 In Cloudflare, go to Analytics & Logs, then Web Analytics, and add the site. Choose plain "Enable", not "Enable, excluding visitor data in the EU". A site that Cloudflare proxies needs nothing else. A site hosted elsewhere (Vercel) needs the snippet Cloudflare shows, added to the root layout. Lighthouse counts it as set up once a visit is recorded.
 
+## Users
+
+A site that signs in with Clerk shows its users once Lighthouse has that app's secret key, as `CLERK_SECRET_KEY_` plus the repo name in capitals, with anything that isn't a letter or digit turned into `_` (how-much gives `CLERK_SECRET_KEY_HOW_MUCH`). Set it on the Lighthouse Worker and in `.env.local`. Lighthouse only counts users; it never reads who they are.
+
 ## Checks
 
 A workflow that runs on pull requests: copy `.github/workflows/ci.yml` from checkwork. It runs on PRs only, with `paths-ignore: ['**.md']`, because Actions minutes are shared across every private repo. Without it, PRs show "no checks", and Merge has nothing to wait for.

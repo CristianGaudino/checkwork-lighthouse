@@ -1,16 +1,20 @@
 import { Suspense } from 'react';
 import { Gate } from '../../_sections/Gate';
 import { notFound } from 'next/navigation';
-import { requireAdmin } from '@/lib/access';
+import { adminEmail, requireAdmin } from '@/lib/access';
 import { readSessions } from '@/lib/claude';
+import { usesClerk } from '@/lib/clerk';
 import { askHref } from '@/lib/vscode';
-import { siteKey } from '@/lib/cloudflare';
+import { siteKey, type SiteTraffic } from '@/lib/cloudflare';
 import { readLocalRepos } from '@/lib/local';
 import { severe } from '@/lib/security';
 import { setupChecks } from '@/lib/setup';
 import { ago } from '@/lib/today';
-import { OWNER, PROJECTS } from '../../../../lighthouse.config';
-import { loadMissingSettings, loadToday, loadWorkerErrors } from '../../_data';
+import { STATUS_MEANS, type Listed } from '@/lib/repos';
+import { OWNER } from '../../../../lighthouse.config';
+import { setRepoStatus } from '../../act';
+import { loadMissingSettings, loadProjects, loadToday, loadUsers, loadVisitors, loadWorkerErrors } from '../../_data';
+import { StatusPicker } from '../../_sections/Act';
 import { Board } from '../../_sections/Board';
 import { ClaudeSessions } from '../../_sections/Claude';
 import { Git } from '../../_sections/Pc';
@@ -18,33 +22,40 @@ import { liveText, uptimeText, Week } from '../../_sections/Sites';
 import { ProjectIcon } from '../../_sections/ProjectIcon';
 import { DeployLink, Tasks } from '../../_sections/Tasks';
 import { Versions } from '../../_sections/Usage';
+import { SiteUsers, SiteVisitors } from '../../_sections/Visitors';
 import { Dot, ext, link, num, PageTitle, panel, Problem, Section, Setup } from '../../_sections/ui';
 
-const find = (repo: string) => PROJECTS.findIndex(p => p.repo === repo);
+// Any of the owner's repos, archived ones too: those are hidden from the lists, not gone
+const find = async (repo: string) => (await loadProjects()).find(p => p.repo === repo);
 const date = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 export async function generateMetadata(props: PageProps<'/projects/[repo]'>) {
-    const i = find((await props.params).repo);
-    return { title: i < 0 ? 'Not found' : PROJECTS[i].name };
+    // Repo names are private: none in the title until the Access login checks out
+    if (!(await adminEmail())) return {};
+    const p = await find((await props.params).repo);
+    return { title: p ? p.name : 'Not found' };
 }
 
 /** Everything about one project on one page: how its site is doing, what it needs, its board, and this PC's side of it. */
 export default async function Page(props: PageProps<'/projects/[repo]'>) {
-    if (find((await props.params).repo) < 0) notFound();
+    if (!(await find((await props.params).repo))) notFound();
     return <Gate><Project {...props} /></Gate>;
 }
 
 async function Project(props: PageProps<'/projects/[repo]'>) {
     await requireAdmin();
-    const i = find((await props.params).repo);
-    if (i < 0) notFound();
+    const listed = await find((await props.params).repo);
+    if (!listed) notFound();
+    if (listed.status === 'archived') return <Archived p={listed} />;
     const local = process.env.NODE_ENV === 'development';
     const [t, pc, sessions] = await Promise.all([loadToday(), readLocalRepos(), readSessions()]);
-    const { p, live, worker, light, alerts, expires } = t.sites[i];
-    const traffic = t.analytics.data?.traffic.get(siteKey(p.site));
+    const site = t.sites.find(s => s.p.repo === listed.repo);
+    if (!site) notFound();
+    const { p, live, worker, light, alerts, expires, status } = site;
+    const traffic = p.site ? t.analytics.data?.traffic.get(siteKey(p.site)) : undefined;
     const w = worker ? t.analytics.data?.workers.get(worker) : undefined;
     const release = p.repoStatus?.release;
-    const tasks = t.tasks.filter(x => x.project === p.name);
+    const tasks = [...t.tasks, ...t.idle, ...t.muted].filter(x => x.project === p.name);
     const gh = `https://github.com/${OWNER}/${p.repo}`;
     const checks = setupChecks({ repo: p.repoStatus ?? undefined, uptime: p.uptime, analytics: Boolean(t.analytics.data), traffic, live, alerts });
     const missing = checks.filter(c => c.done === false);
@@ -67,9 +78,9 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
         <>
             <PageTitle sub={
                 <span className="flex flex-wrap gap-x-4 gap-y-1">
-                    <a {...ext} className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>
+                    {p.site && <a {...ext} className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>}
                     <a {...ext} className={link} href={gh}>Repo</a>
-                    <a {...ext} className={link} href={`https://github.com/users/${OWNER}/projects/${p.project}`}>Board</a>
+                    {p.project && <a {...ext} className={link} href={`https://github.com/users/${OWNER}/projects/${p.project}`}>Board</a>}
                     <a {...ext} className={link} href={`${gh}/actions`}>Actions</a>
                     {local && live?.state === 'behind' && worker && <DeployLink repo={p.repo} />}
                 </span>
@@ -82,7 +93,7 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                 {facts.map(([label, value, tone]) => (
                     <div key={label} className="bg-canvas px-4 py-3">
                         <dt className="text-xs text-fg-muted">{label}</dt>
-                        <dd className={`mt-1 ${tone ?? ''}`}>{value}</dd>
+                        <dd className={`mt-1 text-[15px] ${tone ?? ''}`}>{value}</dd>
                     </div>
                 ))}
             </dl>
@@ -113,27 +124,50 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                     <WorkerHealth worker={worker} deployedAt={worker ? t.deploys.deployed?.get(worker) : undefined} names={p.repoStatus?.envNames} />
                 </Suspense>
 
-                <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
-                    <Board local={local} project={p.name} />
-                </Suspense>
-
-                {traffic && traffic.topPaths.length > 0 && (
-                    <Section title="Top pages" aside="Page views, 7 days">
-                        <ul className={`${panel} text-sm tabular-nums`}>
-                            {traffic.topPaths.map(tp => (
-                                <li key={tp.path} className="flex justify-between gap-4 px-4 py-2">
-                                    <span className="truncate">{tp.path}</span><span className="text-fg-muted">{num.format(tp.views)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </Section>
+                {p.project && (
+                    <Suspense fallback={<Section title="Board"><p className="mt-3 text-sm text-fg-muted">Loading</p></Section>}>
+                        <Board local={local} project={p.name} />
+                    </Suspense>
                 )}
 
-                {!t.problem && <Versions repos={t.repos} only={p.repo} />}
+                <Suspense fallback={null}>
+                    <Audience repo={p.repo} site={p.site} clerk={usesClerk(p.repoStatus?.envNames)} traffic={traffic} />
+                </Suspense>
 
-                {sessions && <ClaudeSessions title="Claude sessions" sessions={sessions.filter(s => s.repo === p.repo)} />}
+                {!t.problem && <Versions projects={t.rows} repos={t.repos} only={p.repo} />}
+
+                {sessions && <ClaudeSessions title="Claude sessions" oneRepo sessions={sessions.filter(s => s.repo === p.repo)} />}
                 {pc?.repos.some(r => r.name === p.repo) && <Git title="On this PC" root={pc.root} repos={pc.repos.filter(r => r.name === p.repo)} />}
+
+                <Section title="Status"><StatusLine repo={p.repo} status={status} /></Section>
             </div>
+        </>
+    );
+}
+
+/** The repo's status and what it means. */
+const StatusLine = ({ repo, status }: { repo: string; status: Listed['status'] }) => (
+    <div className="mt-3 grid gap-2 text-sm">
+        <StatusPicker action={setRepoStatus} repo={repo} status={status} />
+        <p className="max-w-2xl text-fg-muted">{STATUS_MEANS}</p>
+    </div>
+);
+
+/** An archived repo: Lighthouse loads nothing for it, so its page is where to bring it back. */
+function Archived({ p }: { p: Listed }) {
+    const gh = `https://github.com/${OWNER}/${p.repo}`;
+    return (
+        <>
+            <PageTitle sub={
+                <span className="flex flex-wrap gap-x-4 gap-y-1">
+                    {p.site && <a {...ext} className={link} href={`https://${p.site}`}>{p.site.replace(/^www\./, '')}</a>}
+                    <a {...ext} className={link} href={gh}>Repo</a>
+                </span>
+            }>
+                <span className="flex items-center gap-3"><ProjectIcon project={p.repo} className="size-9 rounded-lg text-sm" />{p.name}</span>
+            </PageTitle>
+            <p className="mt-6 text-sm text-fg-muted">Archived. Pick another status to bring it back.</p>
+            <StatusLine repo={p.repo} status={p.status} />
         </>
     );
 }
@@ -146,9 +180,7 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
         <>
                 {unset && unset.length > 0 && (
                     <Section title="Worker settings" aside={`${unset.length} not set`}>
-                        <p className="mt-3 max-w-2xl text-sm text-fg-muted">
-                            In .env.example but not on the {worker} Worker. Some may be optional; a missing one it needs breaks the site.
-                        </p>
+                        <p className="mt-3 max-w-2xl text-sm text-fg-muted">In .env.example but not on the {worker} Worker. Some may be optional.</p>
                         <p className="mt-2 flex flex-wrap gap-2">{unset.map(name => <code key={name} className="rounded-md border border-line px-2 py-0.5 font-mono text-xs">{name}</code>)}</p>
                     </Section>
                 )}
@@ -161,7 +193,10 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
                             <ul className={`${panel} text-sm`}>
                                 {top.map(e => (
                                     <li key={e.message} className="flex items-baseline justify-between gap-4 px-4 py-2">
-                                        <span className="min-w-0 break-words font-mono text-xs">{e.message}{e.fresh && <span className="ml-2 font-sans text-warn">New since the deploy</span>}</span>
+                                        <span className="min-w-0">
+                                            {e.fresh && <span className="block text-xs text-warn">New since the deploy</span>}
+                                            <span className="break-words font-mono text-xs">{e.message}</span>
+                                        </span>
                                         <span className="shrink-0 tabular-nums text-fg-muted">{num.format(e.count)}</span>
                                     </li>
                                 ))}
@@ -169,6 +204,17 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
                         )}
                     </Section>
                 ) : null}
+        </>
+    );
+}
+
+/** Visitors on last week and the site's users: each another call, so the page shows without waiting on them. */
+async function Audience({ repo, site, clerk, traffic }: { repo: string; site?: string; clerk: boolean; traffic: SiteTraffic | undefined }) {
+    const [v, u] = await Promise.all([loadVisitors(), loadUsers(repo, clerk)]);
+    return (
+        <>
+            <SiteVisitors traffic={traffic} visitors={site ? v.visitors?.get(siteKey(site)) : undefined} problem={traffic ? v.problem : undefined} />
+            <SiteUsers {...u} />
         </>
     );
 }

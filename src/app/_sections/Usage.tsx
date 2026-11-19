@@ -1,7 +1,7 @@
 import type { RepoStatus } from '@/lib/github';
 import { buildDrift } from '@/lib/drift';
 import { INCLUDED, type Minutes as Data } from '@/lib/minutes';
-import { PROJECTS } from '../../../lighthouse.config';
+import type { Project } from '../../../lighthouse.config';
 import { cell, ext, link, num, Section } from './ui';
 
 const day = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'long', timeZone: 'UTC' });
@@ -40,13 +40,13 @@ export function Minutes({ m, compact }: { m: Data; compact?: boolean }) {
     );
 }
 
-/** Declared versions per repo; amber where a repo asks for less than the newest any repo uses. `only`: one repo's row. */
-export function Versions({ repos, only }: { repos: RepoStatus[]; only?: string }) {
-    const { labels, newest, rows: all } = buildDrift(PROJECTS, repos);
+/** Declared versions per repo (`repos` in `projects` order); amber where a repo asks for less than the newest any repo uses. `only`: one repo's row. */
+export function Versions({ projects, repos, only }: { projects: Project[]; repos: RepoStatus[]; only?: string }) {
+    const { labels, newest, rows: all } = buildDrift(projects, repos);
     const rows = all.filter(r => !only || r.repo === only);
     if (!rows.length) return null;
     return (
-        <Section id="versions" title="Versions" aside="Amber is behind the newest in use">
+        <Section id="versions" title="Versions" aside="Amber is behind the newest">
             <div className="relative mt-3 overflow-x-auto rounded-2xl border border-line">
                 <table className="w-full whitespace-nowrap text-left text-sm tabular-nums">
                     <thead className="text-xs text-fg-muted">

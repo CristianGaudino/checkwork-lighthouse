@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { summarise, workerTasks } from './cloudflare';
+import { summarise, summariseVisitors, workerTasks } from './cloudflare';
 
 const host = (requestHost: string, count: number, visits: number, date = '2026-11-13') => ({ count, sum: { visits }, dimensions: { requestHost, date } });
 const now = new Date('2026-11-13T12:00:00Z');
@@ -31,4 +31,23 @@ it('flags a Worker only past 1% errors and at least 10 of them', () => {
     const tasks = workerTasks([{ name: 'N', worker: 'noisy' }, { name: 'F', worker: 'fine' }, { name: 'R', worker: 'rare' }, { name: 'X', worker: null }], a, 'acc');
     expect(tasks.map(t => [t.project, t.detail])).toEqual([['N', '2.5% of 1,000 requests failed in 24 hours']]);
     expect(tasks[0].href).toBe('https://dash.cloudflare.com/acc/workers/services/view/noisy/production/observability/logs');
+});
+
+it('takes last week per site and ranks where this week came from, leaving out clicks within the site', () => {
+    const row = (requestHost: string, count: number, dims: Record<string, string | null>) => ({ count, dimensions: { requestHost, ...dims } });
+    const v = summariseVisitors({ viewer: { accounts: [{
+        prev: [{ count: 40, sum: { visits: 20 }, dimensions: { requestHost: 'www.a.ie' } }, { count: 5, sum: { visits: 3 }, dimensions: { requestHost: 'a.ie' } }],
+        referrers: [row('www.a.ie', 30, { refererHost: 'www.a.ie' }), row('a.ie', 9, { refererHost: 'www.google.com' }), row('www.a.ie', 4, { refererHost: 'google.com' }), row('a.ie', 6, { refererHost: 'x.com' }), row('a.ie', 50, { refererHost: null })],
+        countries: [row('a.ie', 7, { countryName: 'IE' }), row('a.ie', 2, { countryName: 'GB' })],
+        devices: [row('b.ie', 3, { deviceType: 'mobile' })],
+    }] } });
+    expect(v.get('a.ie')).toEqual({
+        prevVisits: 23, prevViews: 45,
+        referrers: [{ name: 'google.com', views: 13 }, { name: 'x.com', views: 6 }],
+        countries: [{ name: 'IE', views: 7 }, { name: 'GB', views: 2 }],
+        devices: [],
+    });
+    // A site with nothing last week compares against 0
+    expect(v.get('b.ie')).toEqual({ prevVisits: 0, prevViews: 0, referrers: [], countries: [], devices: [{ name: 'mobile', views: 3 }] });
+    expect(summariseVisitors({ viewer: { accounts: [] } }).size).toBe(0);
 });

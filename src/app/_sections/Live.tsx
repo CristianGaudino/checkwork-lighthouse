@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import type { Beat, BeatKind } from '@/lib/pulse';
 import { freshKeys } from '@/lib/seen';
 
-export const KINDS: { kind: Exclude<BeatKind, 'other'>; label: string }[] = [
+export const KINDS: { kind: BeatKind; label: string }[] = [
     { kind: 'down', label: 'A site goes down' },
     { kind: 'main', label: 'Main fails' },
     { kind: 'pr', label: 'A PR is ready to merge' },
     { kind: 'claude', label: 'A Claude session needs you' },
+    // Security alerts, domains, minutes, deploys behind, Worker errors: red on the page, so they could notify too
+    { kind: 'other', label: 'Anything else that needs you' },
 ];
 
 /**
@@ -67,7 +69,7 @@ export function Live({ beats }: { beats: Beat[] }) {
         return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
     }, [router]);
 
-    const count = beats.length;
+    const count = beats.filter(b => !b.quiet).length;
     useEffect(() => {
         // Next writes the page's <title> itself, after this runs and on every navigation, so the count goes back on
         // whenever the title changes; setting it fires the observer once more, finds it right, and stops

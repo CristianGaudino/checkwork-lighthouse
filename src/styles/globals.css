@@ -1,6 +1,9 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss";
 
+/* The desktop sidebar folded to icons: `.sidebar-folded` on <html>, set before paint (src/lib/sidebar.ts) */
+@custom-variant folded (&:where(.sidebar-folded, .sidebar-folded *));
+
 /* Checkwork brand tokens (checkwork/src/styles/globals.css), plus status colours. Components use the semantic utilities below, never raw colours. */
 :root {
     --canvas:     #0b0f1f; /* Midnight */

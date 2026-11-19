@@ -16,7 +16,7 @@ export const Setup = ({ children }: { children: React.ReactNode }) => <p classNa
 /** The page's one big line, saying how things stand, with an optional quiet line under it. */
 export const PageTitle = ({ children, sub }: { children: React.ReactNode; sub?: React.ReactNode }) => (
     <div>
-        <h1 className="text-3xl font-semibold sm:text-4xl">{children}</h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{children}</h1>
         {sub && <p className="mt-2 text-sm text-fg-muted">{sub}</p>}
     </div>
 );

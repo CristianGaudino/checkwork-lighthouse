@@ -82,18 +82,94 @@ export function summarise(raw: unknown, now = new Date()): Analytics {
 export const siteKey = bare;
 
 /** Throws when Cloudflare refuses the token or the query; the page then says so. */
-export async function fetchAnalytics(token: string, account: string, now = new Date()): Promise<Analytics> {
-    const at = (ms: number) => new Date(now.getTime() - ms).toISOString();
+async function graphql(token: string, query: string, variables: Record<string, string>): Promise<unknown> {
     const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ query: QUERY, variables: { account, week: at(7 * 86_400_000), day: at(86_400_000), now: now.toISOString() } }),
+        body: JSON.stringify({ query, variables }),
         signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Cloudflare: ${res.status}`);
     const body = (await res.json()) as { data?: unknown; errors?: { message: string }[] | null };
     if (body.errors?.length) throw new Error(`Cloudflare: ${body.errors.map(e => e.message).join('; ')}`);
-    return summarise(body.data, now);
+    return body.data;
+}
+
+const at = (now: Date, days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
+
+export async function fetchAnalytics(token: string, account: string, now = new Date()): Promise<Analytics> {
+    return summarise(await graphql(token, QUERY, { account, week: at(now, 7), day: at(now, 1), now: now.toISOString() }), now);
+}
+
+/**
+ * Who visits each site, from the same Web Analytics data: last week's totals (7 to 14 days ago) to compare this week's
+ * with, and where this week's page views came from. A query of its own, so a refusal here never costs the Traffic table.
+ */
+export type Ranked = { name: string; views: number }[];
+export type Visitors = { prevVisits: number; prevViews: number; referrers: Ranked; countries: Ranked; devices: Ranked };
+
+const Row = <D extends z.ZodRawShape>(dims: D) => z.array(z.object({ count: z.number(), dimensions: z.object({ requestHost: z.string(), ...dims }) })).default([]);
+const VisitorData = z.object({
+    viewer: z.object({
+        accounts: z.array(z.object({
+            prev: z.array(z.object({ count: z.number(), sum: z.object({ visits: z.number() }), dimensions: z.object({ requestHost: z.string() }) })).default([]),
+            referrers: Row({ refererHost: z.string().nullable().optional() }),
+            countries: Row({ countryName: z.string().nullable().optional() }),
+            devices: Row({ deviceType: z.string().nullable().optional() }),
+        })),
+    }),
+});
+
+const VISITORS = `query ($account: String!, $prev: Time!, $week: Time!, $now: Time!) {
+  viewer { accounts(filter: { accountTag: $account }) {
+    prev: rumPageloadEventsAdaptiveGroups(limit: 1000, filter: { datetime_geq: $prev, datetime_leq: $week }) {
+      count sum { visits } dimensions { requestHost }
+    }
+    referrers: rumPageloadEventsAdaptiveGroups(limit: 1000, filter: { datetime_geq: $week, datetime_leq: $now }, orderBy: [count_DESC]) {
+      count dimensions { requestHost refererHost }
+    }
+    countries: rumPageloadEventsAdaptiveGroups(limit: 1000, filter: { datetime_geq: $week, datetime_leq: $now }, orderBy: [count_DESC]) {
+      count dimensions { requestHost countryName }
+    }
+    devices: rumPageloadEventsAdaptiveGroups(limit: 1000, filter: { datetime_geq: $week, datetime_leq: $now }, orderBy: [count_DESC]) {
+      count dimensions { requestHost deviceType }
+    }
+  } }
+}`;
+
+/** Per site (with or without www): last week's totals and this week's top 5 referrers, countries and devices. Separate from the fetch so it can be tested. */
+export function summariseVisitors(raw: unknown): Map<string, Visitors> {
+    const account = VisitorData.parse(raw).viewer.accounts[0];
+    const sites = new Map<string, Visitors>();
+    const site = (host: string) => {
+        const key = bare(host);
+        if (!sites.has(key)) sites.set(key, { prevVisits: 0, prevViews: 0, referrers: [], countries: [], devices: [] });
+        return sites.get(key)!;
+    };
+    for (const r of account?.prev ?? []) {
+        const v = site(r.dimensions.requestHost);
+        v.prevVisits += r.sum.visits;
+        v.prevViews += r.count;
+    }
+    const add = (list: Ranked, name: string | null | undefined, views: number) => {
+        if (!name) return; // no referrer is a typed address or a bookmark, not a source to rank
+        const row = list.find(x => x.name === name);
+        if (row) row.views += views; else list.push({ name, views });
+    };
+    for (const r of account?.referrers ?? []) {
+        const from = r.dimensions.refererHost && bare(r.dimensions.refererHost);
+        // A click from one page of the site to another is not a referrer
+        add(site(r.dimensions.requestHost).referrers, from === bare(r.dimensions.requestHost) ? null : from, r.count);
+    }
+    for (const r of account?.countries ?? []) add(site(r.dimensions.requestHost).countries, r.dimensions.countryName, r.count);
+    for (const r of account?.devices ?? []) add(site(r.dimensions.requestHost).devices, r.dimensions.deviceType, r.count);
+    const top = (list: Ranked) => list.sort((a, b) => b.views - a.views).slice(0, 5);
+    for (const v of sites.values()) { v.referrers = top(v.referrers); v.countries = top(v.countries); v.devices = top(v.devices); }
+    return sites;
+}
+
+export async function fetchVisitors(token: string, account: string, now = new Date()): Promise<Map<string, Visitors>> {
+    return summariseVisitors(await graphql(token, VISITORS, { account, prev: at(now, 14), week: at(now, 7), now: now.toISOString() }));
 }
 
 const pct = new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDigits: 1 });

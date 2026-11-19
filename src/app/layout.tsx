@@ -4,6 +4,7 @@ import { adminEmail } from '@/lib/access';
 import { readSessions } from '@/lib/claude';
 import { jumps } from '@/lib/palette';
 import { beats } from '@/lib/pulse';
+import { sidebarScript } from '@/lib/sidebar';
 import { loadIcons, loadNeon, loadToday } from './_data';
 import { Live } from './_sections/Live';
 import { Nav } from './_sections/Nav';
@@ -35,7 +36,9 @@ async function ownerParts(local: boolean) {
     if (!(await adminEmail())) return null;
     const [t, sessions, icons, neon] = await Promise.all([loadToday(), readSessions(), loadIcons(), loadNeon()]);
     const root = local ? (await import('node:path')).dirname(process.cwd()) : undefined;
-    return { icons, beats: beats(t.tasks, sessions), jumps: jumps(t.sites, { account: process.env.CLOUDFLARE_ACCOUNT_ID, neon: neon.projects, root }) };
+    // Muted projects' tasks never reach the pulse; archived ones are only a jump to their page
+    const archived = t.archived.map(p => ({ label: p.name, hint: 'Archived project', href: `/projects/${p.repo}`, project: p.repo }));
+    return { icons, beats: beats(t.tasks, sessions, t.idle), jumps: [...jumps(t.sites, { account: process.env.CLOUDFLARE_ACCOUNT_ID, neon: neon.projects, root }), ...archived], sites: t.sites.map(s => s.p) };
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
@@ -43,14 +46,18 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     const local = process.env.NODE_ENV === 'development';
     const owner = await ownerParts(local);
     return (
-        <html lang="en-IE" className={`${sora.variable} ${inter.variable}`}>
+        // suppressHydrationWarning: sidebarScript may add a class to <html> before React hydrates it
+        <html lang="en-IE" suppressHydrationWarning className={`${sora.variable} ${inter.variable}`}>
+            <head>
+                <script dangerouslySetInnerHTML={{ __html: sidebarScript }} />
+            </head>
             <body className="bg-canvas font-sans text-fg antialiased">
                 {/* The manifest makes Lighthouse installable. use-credentials sends the Access cookie with it; without that,
                     browsers fetch it cookie-less, Access answers with its login page, and install quietly fails. React puts this in <head>. */}
                 <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
                 <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-fg focus:px-4 focus:py-2 focus:text-canvas">Skip to content</a>
-                {owner && <><IconStyles icons={owner.icons} /><Live beats={owner.beats} /><Palette jumps={owner.jumps} local={local} /></>}
-                <div className="lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
+                {owner && <><IconStyles icons={owner.icons} sites={owner.sites} /><Live beats={owner.beats} /><Palette jumps={owner.jumps} local={local} /></>}
+                <div className="lg:grid lg:grid-cols-[14rem_minmax(0,1fr)] lg:folded:grid-cols-[4rem_minmax(0,1fr)]">
                     <Nav local={local} />
                     {/* Full width by choice (the owner's call), with page-edge padding only; pb-28 keeps the end of a page above the phone's tab bar */}
                     <main id="main" className="min-w-0 px-4 pb-28 pt-6 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">{children}</main>

@@ -16,9 +16,9 @@ const STATE: Record<SessionState, { text: string; dot: string }> = {
 /**
  * Local only: Claude Code sessions from the last two days, the ones that need you first. A session asking you something
  * shows the question and its choices. Open (or Answer) goes to the session on the Claude page, to read and reply there.
- * `more`: a link to the full list, for the Overview's short one.
+ * `more`: a link to the full list, for the Overview's short one. `oneRepo`: a project's own page, so no repo column.
  */
-export function ClaudeSessions({ sessions, title = 'Claude sessions', more }: { sessions: Session[]; title?: string; more?: string }) {
+export function ClaudeSessions({ sessions, title = 'Claude sessions', more, oneRepo }: { sessions: Session[]; title?: string; more?: string; oneRepo?: boolean }) {
     const waiting = sessions.filter(s => needsYou(s)).length;
     const aside = more ? <Link className={link} href={more}>All sessions</Link> : sessions.length ? (waiting ? `${waiting} need you` : 'None need you') : undefined;
     return (
@@ -26,12 +26,14 @@ export function ClaudeSessions({ sessions, title = 'Claude sessions', more }: { 
             {sessions.length ? (
                 <ul className={panel}>
                     {sessions.map(s => (
-                        <li key={s.id} className="grid gap-x-4 gap-y-2 px-4 py-3 text-sm sm:grid-cols-[minmax(9rem,12rem)_1fr_auto] sm:items-baseline">
-                            <Link href={`/claude/${s.id}`} className="flex items-center gap-3 font-medium hover:underline hover:underline-offset-4">
-                                <ProjectIcon project={s.repo} />
-                                {s.repo}
-                            </Link>
-                            <div className="min-w-0 pl-8 sm:pl-0">
+                        <li key={s.id} className={`grid gap-x-4 gap-y-2 px-4 py-3 text-sm sm:items-baseline ${oneRepo ? 'sm:grid-cols-[1fr_auto]' : 'sm:grid-cols-[minmax(9rem,12rem)_1fr_auto]'}`}>
+                            {!oneRepo && (
+                                <Link href={`/claude/${s.id}`} className="flex items-center gap-3 font-medium hover:underline hover:underline-offset-4">
+                                    <ProjectIcon project={s.repo} />
+                                    {s.repo}
+                                </Link>
+                            )}
+                            <div className={`min-w-0 ${oneRepo ? '' : 'pl-8 sm:pl-0'}`}>
                                 <p>{s.title}</p>
                                 <p className="flex items-center gap-2 text-fg-muted">
                                     <span aria-hidden className={`size-2 shrink-0 rounded-full ${STATE[s.state].dot}`} />
@@ -44,7 +46,7 @@ export function ClaudeSessions({ sessions, title = 'Claude sessions', more }: { 
                                     </div>
                                 ))}
                             </div>
-                            <span className="flex flex-wrap gap-x-4 gap-y-1 pl-8 text-fg-muted sm:justify-end sm:pl-0">
+                            <span className={`flex flex-wrap gap-x-4 gap-y-1 text-fg-muted sm:justify-end ${oneRepo ? '' : 'pl-8 sm:pl-0'}`}>
                                 {s.prUrl && <a {...ext} className={link} href={s.prUrl}>PR</a>}
                                 <Link className={`${link} text-fg`} href={`/claude/${s.id}`}>{s.state === 'question' ? 'Answer' : 'Open'}</Link>
                                 <a className={link} href={resumeHref(s.id)} title="Opens the session in Claude Code, in VS Code">VS Code</a>
@@ -62,7 +64,7 @@ export function ClaudeToday({ usage }: { usage: { repo: string; tokens: number; 
     if (!usage.length) return null;
     const total = usage.reduce((sum, u) => sum + u.tokens, 0);
     return (
-        <Section title="Claude today" aside={<><Link className={link} href="/claude">Sessions</Link>, <span title={`${num.format(total)} tokens`}>{short.format(total)}</span> tokens written</>}>
+        <Section title="Claude today" aside={<span className="flex gap-4"><span title={`${num.format(total)} tokens`}>{short.format(total)} tokens written</span><Link className={link} href="/claude">Sessions</Link></span>}>
             <ul className={`${panel} text-sm tabular-nums`}>
                 {usage.map(u => (
                     <li key={u.repo} className="flex items-center justify-between gap-4 px-4 py-2">

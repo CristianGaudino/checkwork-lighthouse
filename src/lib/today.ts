@@ -73,6 +73,7 @@ export function mainTask(p: Project, r: RepoStatus | undefined, live: LiveState 
 const MONITORS = 'https://dashboard.uptimerobot.com/monitors';
 
 function uptimeTask(p: Project, u: Uptime | null): Task | null {
+    if (!p.site) return null; // nothing to watch
     const site = p.site.replace(/^www\./, '');
     if (!u) return { project: p.name, level: 2, action: 'Add a monitor for', title: site, detail: 'UptimeRobot is not watching it', href: MONITORS };
     if (u.state === 'down') return { project: p.name, level: 1, action: 'Site down:', title: site, detail: u.seconds === null ? 'Per UptimeRobot' : `Down for ${span(u.seconds)}`, href: `${MONITORS}/${u.id}`, incidentRepo: p.repo, fix: `${site} is down. Find out why from the newest commits and deploys on main, and say what to do before changing anything.` };
@@ -131,6 +132,10 @@ export function ago(iso: string, now = Date.now()): string {
     for (const [unit, size] of UNITS) if (Math.abs(ms) >= size) return rtf.format(Math.round(ms / size), unit);
     return 'just now';
 }
+
+/** A count against the week before: "+12 vs last week", "-3 vs last week" or "Same as last week". */
+export const vsLastWeek = (now: number, before: number) =>
+    now === before ? 'Same as last week' : `${now > before ? '+' : '-'}${new Intl.NumberFormat('en-IE').format(Math.abs(now - before))} vs last week`;
 
 const DURATION: [Intl.NumberFormat, number][] = (['day', 'hour', 'minute'] as const).map((unit, i) => [new Intl.NumberFormat('en-IE', { style: 'unit', unit, unitDisplay: 'long' }), [86_400, 3_600, 60][i]]);
 

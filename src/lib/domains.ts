@@ -5,6 +5,8 @@ import { ago, type Task } from './today';
 /** The registered domain a site is under: "www.demo.checkwork.ie" is checkwork.ie. */
 // shortcut: the last two labels, so a two-part suffix like .co.uk reads as co.uk. Use the public suffix list if one comes along.
 export const domainOf = (site: string) => site.toLowerCase().split('.').slice(-2).join('.');
+/** False for a site on a host's shared domain (vercel.app and the like): its expiry is the host's business. */
+export const ownDomain = (site: string) => !/\.(vercel\.app|workers\.dev|pages\.dev|netlify\.app|github\.io)$/i.test(site);
 
 const Bootstrap = z.object({ services: z.array(z.tuple([z.array(z.string()), z.array(z.string())])) });
 const Rdap = z.object({ events: z.array(z.object({ eventAction: z.string(), eventDate: z.string() })) });
@@ -37,6 +39,7 @@ const WARN_DAYS = 30, URGENT_DAYS = 7;
 export function domainTasks(projects: Project[], expiry: Map<string, string>, now = Date.now()): Task[] {
     const seen = new Set<string>();
     return projects.flatMap(p => {
+        if (!p.site) return [];
         const d = domainOf(p.site), at = expiry.get(d);
         if (seen.has(d) || !at) return [];
         seen.add(d);

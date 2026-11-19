@@ -22,7 +22,7 @@ export function matchUptime(projects: Project[], raw: unknown[]): (Uptime | null
         return parsed.success ? [parsed.data] : [];
     });
     return projects.map(p => {
-        const m = monitors.find(x => host(x.url) === host(`https://${p.site}`));
+        const m = p.site ? monitors.find(x => host(x.url) === host(`https://${p.site}`)) : undefined;
         return m ? { id: m.id, state: STATES[m.status] ?? 'unknown', seconds: m.currentStateDuration ?? null } : null;
     });
 }
