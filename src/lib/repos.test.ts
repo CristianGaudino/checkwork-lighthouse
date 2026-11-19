@@ -14,6 +14,11 @@ it('reads the status from the topic, GitHub archived first, and an untouched rep
     expect(statusOf(repo('a', { pushedAt: '2025-11-01T00:00:00Z', topics: ['lighthouse-active'] }), now)).toBe('active');
 });
 
+it('never ages a config line into archived: a live site nobody touches keeps its alerts', () => {
+    const [p] = mergeProjects([{ name: 'Portfolio', repo: 'portfolio', site: 'www.cgaudino.com' }], [repo('portfolio', { pushedAt: '2024-01-01T00:00:00Z' })], now);
+    expect(p.status).toBe('active');
+});
+
 it('swaps only the lighthouse topic, and writes active only where the repo is too old to go without', () => {
     expect(swapTopic(['nextjs', 'lighthouse-idle'], 'muted', false)).toEqual(['nextjs', 'lighthouse-muted']);
     expect(swapTopic(['nextjs', 'lighthouse-idle'], 'active', false)).toEqual(['nextjs']);

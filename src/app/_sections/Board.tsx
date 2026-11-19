@@ -1,10 +1,11 @@
-import { automationGaps, BOARDS, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
+import { automationGaps, COLUMNS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
 import { askHref } from '@/lib/vscode';
 import { listRepos } from '@/lib/local';
 import { memo, MINUTE } from '@/lib/memo';
 import { StartClaude } from './NewSession';
 import { ProjectIcon } from './ProjectIcon';
 import { ext, link, Problem, Section, Setup } from './ui';
+import { loadBoards } from '../_data';
 
 /**
  * Open work on the project boards: what is moving, what waits for review, what is next, and each backlog's size.
@@ -13,21 +14,22 @@ import { ext, link, Problem, Section, Setup } from './ui';
 export async function Board({ local, project }: { local: boolean; project?: string }) {
     const token = process.env.GITHUB_PROJECTS_TOKEN;
     if (!token) return <Section title="Board"><Setup>Set GITHUB_PROJECTS_TOKEN (a classic token with only read:project) to see the boards.</Setup></Section>;
+    const boards = await loadBoards();
     let board, gaps;
     try {
         const [items, links] = await Promise.all([
-            memo('board', MINUTE, () => fetchBoardItems(BOARDS, token)),
-            process.env.GITHUB_TOKEN ? memo('issue-links', MINUTE, () => fetchIssueLinks(BOARDS, process.env.GITHUB_TOKEN!)) : new Map<string, string>(),
+            memo(`board ${boards.map(p => p.project)}`, MINUTE, () => fetchBoardItems(boards, token)),
+            process.env.GITHUB_TOKEN ? memo(`issue-links ${boards.map(p => p.project)}`, MINUTE, () => fetchIssueLinks(boards, process.env.GITHUB_TOKEN!)) : new Map<string, string>(),
         ]);
-        board = groupBoard(BOARDS, items, links);
-        gaps = project ? [] : automationGaps(BOARDS, items);
+        board = groupBoard(boards, items, links);
+        gaps = project ? [] : automationGaps(boards, items);
     } catch (error) {
         console.error('Could not load the boards', error);
         return <Section title="Board"><Problem>GitHub did not answer, so the board is missing. Reload in a minute.</Problem></Section>;
     }
     // On this PC, Ask Claude starts a session on the Claude page in the card's repo; otherwise VS Code opens it
     const here = local ? await listRepos() : null;
-    const repoOf = (name: string) => BOARDS.find(p => p.name === name)?.repo;
+    const repoOf = (name: string) => boards.find(p => p.name === name)?.repo;
     const cards = (c: (typeof COLUMNS)[number]) => board.columns[c].filter(card => !project || card.project === project);
     const backlog = board.backlog.filter(b => !project || b.project === project);
     return (

@@ -16,12 +16,15 @@ export type Owned = { name: string; site?: string; isArchived: boolean; pushedAt
 export const PREFIX = 'lighthouse-';
 const YEAR = 365 * 86_400_000;
 
-/** A repo GitHub archived, then its topic, then: not pushed to in a year is archived, else active. */
-export function statusOf(r: Owned, now = Date.now()): Status {
+/**
+ * A repo GitHub archived, then its topic, then: not pushed to in a year is archived, else active. `aged` false skips
+ * the age rule, for config lines: a live site nobody needs to touch must keep its alerts.
+ */
+export function statusOf(r: Owned, now = Date.now(), aged = true): Status {
     if (r.isArchived) return 'archived';
     const set = STATUSES.find(s => r.topics.includes(PREFIX + s));
     if (set) return set;
-    return r.pushedAt && now - Date.parse(r.pushedAt) > YEAR ? 'archived' : 'active';
+    return aged && stale(r.pushedAt, now) ? 'archived' : 'active';
 }
 
 /** True when a repo with no topic would read as archived, so active needs its topic written. */
@@ -44,7 +47,7 @@ export function mergeProjects(config: Project[], owned: Owned[], now = Date.now(
     const byName = new Map(owned.map(r => [key(r.name), r]));
     const configured = new Set(config.map(p => key(p.repo)));
     const listed: Listed[] = [
-        ...config.map(p => { const o = byName.get(key(p.repo)); return { ...p, status: o ? statusOf(o, now) : 'active' as const }; }),
+        ...config.map(p => { const o = byName.get(key(p.repo)); return { ...p, status: o ? statusOf(o, now, false) : 'active' as const }; }),
         ...owned.filter(r => !configured.has(key(r.name))).map(r => ({ name: r.name, repo: r.name, site: r.site, status: statusOf(r, now) })),
     ];
     return listed.sort((a, b) => RANK[a.status] - RANK[b.status]);
@@ -63,7 +66,7 @@ const Repos = z.object({
 });
 
 // shortcut: the first 100 repos (about 30 today); page with the cursor past that. Only light fields: the heavy ones load for non-archived repos (github.ts)
-const QUERY = `{ user(login: ${JSON.stringify(OWNER)}) { repositories(first: 100, ownerAffiliations: OWNER, orderBy: {field: NAME, direction: ASC}) { nodes {
+const QUERY = `{ user(login: ${JSON.stringify(OWNER)}) { repositories(first: 100, ownerAffiliations: OWNER, isFork: false, orderBy: {field: NAME, direction: ASC}) { nodes {
     name homepageUrl isArchived pushedAt repositoryTopics(first: 20) { nodes { topic { name } } }
 } } } }`;
 

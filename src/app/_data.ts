@@ -12,14 +12,15 @@ import { fetchDeployed, fetchLive, liveState, type LiveState } from '@/lib/live'
 import { ago, buildBoard, lightOf, mainTask, taskKey, type Task } from '@/lib/today';
 import { memo, MINUTE } from '@/lib/memo';
 import { alertTask, fetchAlerts, type Alerts } from '@/lib/security';
-import { domainOf, domainTasks, fetchExpiry } from '@/lib/domains';
+import { domainOf, domainTasks, fetchExpiry, ownDomain } from '@/lib/domains';
 import { fetchIcon, iconsByRepo } from '@/lib/icons';
 import { buildActivity, fetchFailedRuns, fetchHistory, type Event } from '@/lib/activity';
 import { failureText, fetchFailure } from '@/lib/failure';
 import { fetchBindings, missingOnWorker } from '@/lib/secrets';
 import { fetchWorkerErrors, type WorkerError } from '@/lib/werrors';
 import { fetchClaudeCost, fetchCloudflarePlans, type Plan } from '@/lib/costs';
-import { fetchOwned, mergeProjects, type Listed } from '@/lib/repos';
+import { fetchOwned, mergeProjects, type Listed, type Owned } from '@/lib/repos';
+import { BOARDS } from '@/lib/board';
 import { OWNER, PROJECTS } from '../../lighthouse.config';
 
 /** Each source loads on its own and fails on its own: a problem comes back as a sentence for the page, never a throw. */
@@ -32,15 +33,19 @@ export const loadProjects = cache(async function loadProjects(): Promise<Listed[
     const token = process.env.GITHUB_TOKEN;
     if (!token) return mergeProjects(PROJECTS, []);
     try {
-        return mergeProjects(PROJECTS, await memo('owned', 10 * MINUTE, () => fetchOwned(token)));
+        lastOwned = await memo('owned', 10 * MINUTE, () => fetchOwned(token));
     } catch (error) {
         console.error('Could not list the repos', error);
-        return mergeProjects(PROJECTS, []);
     }
+    return mergeProjects(PROJECTS, lastOwned);
 });
+// The last list GitHub gave this Worker instance: a failed listing falls back to it, so a muted repo doesn't wake up for a minute
+let lastOwned: Owned[] = [];
 
 /** The repos not archived: what every list, count and fetch below covers, in this order. */
 export const loadWatched = async () => (await loadProjects()).filter(p => p.status !== 'archived');
+/** The project boards of repos not archived. */
+export const loadBoards = async () => { const watched = new Set((await loadWatched()).map(p => p.repo)); return BOARDS.filter(b => watched.has(b.repo)); };
 // Answers that line up with the list by position are remembered per list, so a list that changed never mismatches them
 const listKey = (ps: Listed[]) => ps.map(p => p.repo).join(',');
 
@@ -194,7 +199,7 @@ async function loadAlerts(): Promise<{ alerts?: (Alerts | null)[]; setup?: strin
 async function loadDomains(): Promise<Map<string, string>> {
     try {
         // Expiry dates change once a year, so half a day is plenty
-        const sites = (await loadWatched()).flatMap(p => p.site ?? []);
+        const sites = (await loadWatched()).flatMap(p => (p.site && ownDomain(p.site) ? p.site : []));
         return await memo(`domains ${sites.join()}`, 720 * MINUTE, () => fetchExpiry([...new Set(sites.map(domainOf))]));
     } catch (error) {
         console.error('Could not load domain expiry', error);

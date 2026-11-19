@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { Gate } from '../../_sections/Gate';
 import { notFound } from 'next/navigation';
-import { requireAdmin } from '@/lib/access';
+import { adminEmail, requireAdmin } from '@/lib/access';
 import { readSessions } from '@/lib/claude';
 import { usesClerk } from '@/lib/clerk';
 import { askHref } from '@/lib/vscode';
@@ -30,6 +30,8 @@ const find = async (repo: string) => (await loadProjects()).find(p => p.repo ===
 const date = new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 export async function generateMetadata(props: PageProps<'/projects/[repo]'>) {
+    // Repo names are private: none in the title until the Access login checks out
+    if (!(await adminEmail())) return {};
     const p = await find((await props.params).repo);
     return { title: p ? p.name : 'Not found' };
 }

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { domainOf, domainTasks, expiryOf } from './domains';
+import { domainOf, domainTasks, expiryOf, ownDomain } from './domains';
 
 const NOW = Date.parse('2026-11-14T12:00:00Z');
 const p = (name: string, site: string) => ({ name, repo: name, site, project: 1 });
@@ -21,4 +21,8 @@ it('asks to renew within 30 days, red within 7, once per domain', () => {
         ['b', 'b.com', 1, 'Expires in 4 days. Renew it at the registrar'],
     ]);
     expect(domainTasks([p('a', 'a.com')], new Map([['a.com', '2026-11-10T00:00:00Z']]), NOW)[0]).toMatchObject({ action: 'Domain expired:', level: 1 });
+});
+
+it("leaves a host's shared domain out of the owner's domains", () => {
+    expect(['motor-bid.vercel.app', 'x.workers.dev', 'www.checkwork.ie'].filter(ownDomain)).toEqual(['www.checkwork.ie']);
 });

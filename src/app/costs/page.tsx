@@ -1,6 +1,6 @@
 import { requireAdmin } from '@/lib/access';
 import { Gate } from '../_sections/Gate';
-import { domainOf } from '@/lib/domains';
+import { domainOf, ownDomain } from '@/lib/domains';
 import { INCLUDED } from '@/lib/minutes';
 import { loadCosts, loadNeon, loadToday } from '../_data';
 import { ProjectIcon } from '../_sections/ProjectIcon';
@@ -45,7 +45,7 @@ async function Costs() {
             value: hours === undefined ? '–' : `${num.format(hours)} compute hours this billing period`,
         },
     ];
-    const domains = [...new Map(t.sites.flatMap(s => (s.p.site ? [[domainOf(s.p.site), { repo: s.p.repo, expires: s.expires }] as const] : []))).entries()];
+    const domains = [...new Map(t.sites.flatMap(s => (s.p.site && ownDomain(s.p.site) ? [[domainOf(s.p.site), { repo: s.p.repo, expires: s.expires }] as const] : []))).entries()];
 
     return (
         <>

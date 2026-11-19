@@ -2,12 +2,12 @@
 
 import { requireAdmin } from '@/lib/access';
 import { askClaude, type AskResult } from '@/lib/ask';
-import { BOARDS, fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
+import { fetchBoardItems, fetchIssueLinks, groupBoard } from '@/lib/board';
 import { briefPrompt, fetchIncidentFacts, fetchMerged, incidentPrompt } from '@/lib/briefing';
 import { span } from '@/lib/today';
 import { forgetAll, memo, MINUTE } from '@/lib/memo';
 import { revalidatePath } from 'next/cache';
-import { loadAnalytics, loadRepos, loadToday, loadUptime, loadWatched } from './_data';
+import { loadAnalytics, loadBoards, loadRepos, loadToday, loadUptime, loadWatched } from './_data';
 
 /**
  * The two Claude buttons, and the page's Refresh. Server actions are reachable by a direct POST, so each one checks the Access login again
@@ -21,12 +21,13 @@ export async function morningBrief(): Promise<AskResult> {
     const k = keys();
     if (!k.claude) return { error: 'Set ANTHROPIC_API_KEY to use the brief.' };
     const now = new Date();
+    const boards = await loadBoards();
     const [today, merged, board] = await Promise.all([
         loadToday(),
         k.github ? fetchMerged(k.github, new Date(now.getTime() - 86_400_000)).catch(() => []) : [],
         k.projects
-            ? Promise.all([memo('board', MINUTE, () => fetchBoardItems(BOARDS, k.projects!)), k.github ? memo('issue-links', MINUTE, () => fetchIssueLinks(BOARDS, k.github!)) : new Map<string, string>()])
-                .then(([items, links]) => groupBoard(BOARDS, items, links)).catch(() => undefined)
+            ? Promise.all([memo(`board ${boards.map(p => p.project)}`, MINUTE, () => fetchBoardItems(boards, k.projects!)), k.github ? memo(`issue-links ${boards.map(p => p.project)}`, MINUTE, () => fetchIssueLinks(boards, k.github!)) : new Map<string, string>()])
+                .then(([items, links]) => groupBoard(boards, items, links)).catch(() => undefined)
             : undefined,
     ]);
     return askClaude(briefPrompt({ now, tasks: today.tasks, board, merged, minutes: today.usage.minutes }), k.claude);

@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { requireAdmin } from '@/lib/access';
+import { adminEmail, requireAdmin } from '@/lib/access';
 import { checkNumber } from '@/lib/act';
 import { fetchFailure } from '@/lib/failure';
 import { memo, MINUTE } from '@/lib/memo';
@@ -24,6 +24,8 @@ const target = async (props: Props) => {
 };
 
 export async function generateMetadata(props: Props) {
+    // Repo names are private: none in the title until the Access login checks out
+    if (!(await adminEmail())) return {};
     const t = await target(props);
     return { title: t ? `#${t.number} ${t.project.name}` : 'Not found' };
 }
