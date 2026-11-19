@@ -205,11 +205,11 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
 }
 
 /** Visitors on last week and the site's users: each another call, so the page shows without waiting on them. */
-async function Audience({ repo, site, clerk, traffic }: { repo: string; site: string; clerk: boolean; traffic: SiteTraffic | undefined }) {
+async function Audience({ repo, site, clerk, traffic }: { repo: string; site?: string; clerk: boolean; traffic: SiteTraffic | undefined }) {
     const [v, u] = await Promise.all([loadVisitors(), loadUsers(repo, clerk)]);
     return (
         <>
-            <SiteVisitors traffic={traffic} visitors={v.visitors?.get(siteKey(site))} problem={traffic ? v.problem : undefined} />
+            <SiteVisitors traffic={traffic} visitors={site ? v.visitors?.get(siteKey(site)) : undefined} problem={traffic ? v.problem : undefined} />
             <SiteUsers {...u} />
         </>
     );

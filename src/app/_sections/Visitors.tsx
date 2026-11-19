@@ -70,7 +70,7 @@ export function SiteUsers({ users, problem, setup }: { users?: Users; problem?: 
     );
 }
 
-type Row = { name: string; site: string; traffic?: SiteTraffic; visitors?: VisitorData; users?: Users };
+type Row = { name: string; traffic?: SiteTraffic; visitors?: VisitorData; users?: Users };
 
 // The table's short form: "+12", "-3" or "Same"
 const change = (now: number, before: number | undefined) => (before === undefined ? '–' : now === before ? 'Same' : vsLastWeek(now, before).replace(' vs last week', ''));
@@ -91,7 +91,7 @@ export function VisitorsSummary({ rows, problem }: { rows: Row[]; problem?: stri
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
-                        {rows.map(r => (
+                        {rows.filter(r => r.traffic || r.users).map(r => (
                             <tr key={r.name}>
                                 <th scope="row" className={`${cell} font-medium`}>{r.name}</th>
                                 <td className={cell}>{r.traffic ? num.format(r.traffic.visits) : '–'}</td>

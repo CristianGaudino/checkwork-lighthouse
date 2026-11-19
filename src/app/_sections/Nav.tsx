@@ -70,12 +70,12 @@ const Brand = ({ id, label }: { id: string; label?: string }) => (
     </Link>
 );
 
-/** "Powered by Checkwork" with its logo, as in How Many?. Folded, the logo is cropped to its check mark. */
+/** "Powered by Checkwork" with its logo, as in How Many?. Hidden when folded, as there: the rail already starts with a check mark. */
 const PoweredBy = () => (
-    <a href="https://www.checkwork.ie" target="_blank" rel="noopener" title="Powered by Checkwork" className="mt-3 flex min-h-9 items-center gap-2 px-3 text-xs text-fg-muted transition-colors hover:text-fg folded:justify-center folded:px-0">
-        <span className="folded:sr-only">Powered by</span>
+    <a href="https://www.checkwork.ie" target="_blank" rel="noopener" className="mt-3 flex min-h-9 items-center gap-2 px-3 text-xs text-fg-muted transition-colors hover:text-fg folded:hidden">
+        Powered by
         {/* eslint-disable-next-line @next/next/no-img-element -- a small SVG served as is: nothing for next/image to do */}
-        <img src="/brand/checkwork-logo-on-dark.svg" width={345} height={60} alt="Checkwork" className="h-4 w-auto folded:w-4 folded:object-cover folded:object-left" />
+        <img src="/brand/checkwork-logo-on-dark.svg" width={345} height={60} alt="Checkwork" className="h-4 w-auto" />
         <span className="sr-only">(opens in a new tab)</span>
     </a>
 );
