@@ -4,7 +4,7 @@ import { canSnooze, SNOOZE_DAYS } from '@/lib/snooze';
 import { taskKey, type Task } from '@/lib/today';
 import { OWNER } from '../../../lighthouse.config';
 import { loadProjects, withFailures } from '../_data';
-import { approvePr, mergeBatch, mergePr, rerun, runDeploy, runRelease, snoozeTask } from '../act';
+import { approvePr, mergeBatch, mergePr, rerun, runDeploy, runRelease, setRepoStatus, snoozeTask } from '../act';
 import { incidentHelp } from '../ask';
 import { ActButton, ReleaseButton } from './Act';
 import { FailureDetail } from './Failure';
@@ -38,6 +38,7 @@ export async function Tasks({ tasks: listed, compact, local }: { tasks: Task[]; 
     const here = local && !compact ? await listRepos() : null;
     const projects = await loadProjects();
     const repoOf = (project: string) => projects.find(p => p.name === project)?.repo;
+    const active = (project: string) => projects.find(p => p.name === project)?.status === 'active';
     // On this PC the session runs on the Claude page; elsewhere (or a repo not cloned here) VS Code opens it
     const claude = (repo: string, label: string, text: string, title: string, strong?: boolean) => (here?.includes(repo)
         ? <><StartClaude repo={repo} text={text} label={label} className={`${link} ${strong ? 'text-fg' : ''}`} /><a className={link} href={askHref(`Work in ${folder(repo)}. ${text}`)} title="Opens Claude Code in VS Code instead">VS Code</a></>
@@ -70,6 +71,8 @@ export async function Tasks({ tasks: listed, compact, local }: { tasks: Task[]; 
                                         {SNOOZE_DAYS.map(d => <button key={d} type="submit" name="days" value={d} className={link}>{d === 1 ? 'Snooze a day' : 'Snooze a week'}</button>)}
                                     </form>
                                 )}
+                                {/* For good, on every device: the project drops out of the counts (a repo topic, src/lib/repos.ts) */}
+                                {repo && canSnooze(t.level) && !t.pr && !t.batch && !t.release && active(t.project) && <ActButton quiet action={setRepoStatus} label="Mark project idle" fields={{ repo, status: 'idle' }} />}
                             </div>
                             {t.failure && <FailureDetail failure={t.failure} />}
                             {(t.rerun || t.dispatch || t.batch || t.release) && (

@@ -30,16 +30,20 @@ const ICONS = {
 };
 
 // `tab`: also in the phone's tab bar, which has room for four; the rest are a search away there
+// Most used first: on this PC, Claude sits under Work
 const PAGES = [
     { href: '/', label: 'Overview', icon: 'overview', tab: true },
     { href: '/work', label: 'Work', icon: 'work', tab: true },
+    { href: '/claude', label: 'Claude', icon: 'claude', local: true },
     { href: '/activity', label: 'Activity', icon: 'activity', tab: true },
     { href: '/projects', label: 'Projects', icon: 'projects', tab: true },
-    { href: '/costs', label: 'Costs', icon: 'costs' },
     { href: '/usage', label: 'Usage', icon: 'usage' },
-    { href: '/claude', label: 'Claude', icon: 'claude', local: true },
+    { href: '/costs', label: 'Costs', icon: 'costs' },
     { href: '/pc', label: 'This PC', icon: 'pc', local: true },
 ] as const;
+
+/** How many things on a page need you: Work's to-dos and waiting sessions, and the sessions alone on Claude. */
+export type Counts = Partial<Record<(typeof PAGES)[number]['href'], number>>;
 
 const Icon = ({ name, className = '' }: { name: keyof typeof ICONS; className?: string }) => (
     <svg viewBox="0 0 24 24" className={`size-[18px] shrink-0 ${className}`}fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{ICONS[name]}</svg>
@@ -86,7 +90,7 @@ const onFold = (change: () => void) => {
 };
 
 /** The sidebar on a wide screen, and on a phone a slim top bar plus a tab bar at the bottom, where a thumb reaches. */
-export function Nav({ local }: { local: boolean }) {
+export function Nav({ local, counts = {} }: { local: boolean; counts?: Counts }) {
     const path = usePathname();
     const pages = PAGES.filter(p => !('local' in p) || local);
     const current = (href: string) => (href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`));
@@ -112,8 +116,13 @@ export function Nav({ local }: { local: boolean }) {
                                     title={tip(p.label)}
                                     className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-fg-muted transition-colors hover:text-fg aria-[current=page]:bg-surface aria-[current=page]:text-fg aria-[current=page]:shadow-[inset_0_0_0_1px_var(--line)] folded:justify-center folded:px-0"
                                 >
-                                    <Icon name={p.icon} />
-                                    <span className="folded:sr-only">{p.label}</span>
+                                    <span className="relative">
+                                        <Icon name={p.icon} />
+                                        {/* Folded, a dot on the icon says the same as the number */}
+                                        {Boolean(counts[p.href]) && <span aria-hidden className="absolute -right-1 -top-1 hidden size-2 rounded-full bg-warn folded:block" />}
+                                    </span>
+                                    <span className="flex-1 folded:sr-only">{p.label}</span>
+                                    {Boolean(counts[p.href]) && <span className="text-xs tabular-nums text-fg-muted folded:sr-only"><span className="sr-only">, </span>{counts[p.href]}<span className="sr-only"> need you</span></span>}
                                 </Link>
                             </li>
                         ))}
@@ -147,7 +156,10 @@ export function Nav({ local }: { local: boolean }) {
                                 aria-current={current(p.href) ? 'page' : undefined}
                                 className="flex h-14 flex-col items-center justify-center gap-1 text-[11px] text-fg-muted transition-transform active:scale-95 aria-[current=page]:text-fg"
                             >
-                                <Icon name={p.icon} />
+                                <span className="relative">
+                                    <Icon name={p.icon} />
+                                    {Boolean(counts[p.href]) && <span className="absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-warn px-1 text-center text-[10px] font-medium leading-4 text-canvas tabular-nums"><span className="sr-only">, </span>{counts[p.href]}<span className="sr-only"> need you</span></span>}
+                                </span>
                                 {p.label}
                             </Link>
                         </li>

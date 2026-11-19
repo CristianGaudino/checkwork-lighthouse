@@ -1,7 +1,9 @@
 import { Suspense } from 'react';
 import { Gate } from '../_sections/Gate';
 import { requireAdmin } from '@/lib/access';
+import { needsYou, readSessions } from '@/lib/claude';
 import { loadToday } from '../_data';
+import { ClaudeSessions } from '../_sections/Claude';
 import { newIssue, wakeAll } from '../act';
 import { NewIssue } from '../_sections/Act';
 import { Board } from '../_sections/Board';
@@ -22,13 +24,16 @@ async function Work(props: PageProps<'/work'>) {
     const q = await props.searchParams;
     const start = { repo: one(q.repo), title: one(q.title), body: one(q.body) };
     const local = process.env.NODE_ENV === 'development';
-    const t = await loadToday();
+    const [t, sessions] = await Promise.all([loadToday(), readSessions()]);
+    // Everything that needs you in one list: on this PC that includes Claude sessions waiting on you
+    const claude = sessions?.filter(s => needsYou(s)) ?? [];
     const quiet = [...t.idle, ...t.muted];
     return (
         <>
-            <PageTitle sub={t.tasks.length ? 'Worst first' : undefined}>{t.tasks.length ? `${t.tasks.length} to do` : 'Nothing to do'}</PageTitle>
+            <PageTitle sub={[t.tasks.length > 0 && 'Worst first', claude.length > 0 && `${n(claude.length, 'Claude session')} waiting`].filter(Boolean).join(', ') || undefined}>{t.tasks.length ? `${t.tasks.length} to do` : 'Nothing to do'}</PageTitle>
             {[t.problem, t.uptime.problem].filter(Boolean).map(text => <Problem key={text}>{text}</Problem>)}
             <div className="mt-10">
+                {claude.length > 0 && <ClaudeSessions title="Claude" sessions={claude} more="/claude" />}
                 {t.tasks.length > 0 && (
                     <Section title="To do">
                         {/* Tasks reads why failing checks failed: the rest of the page shows meanwhile */}

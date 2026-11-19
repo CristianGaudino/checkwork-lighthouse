@@ -25,6 +25,9 @@ export const canSnooze = (level: number) => level === 2;
 
 /** Adds one, keeping the ones that wake last when there are too many. */
 export function snooze(s: Snoozed, key: string, days: number, now = Date.now()): Snoozed {
-    const all = Object.entries({ ...s, [key]: now + days * 86_400_000 }).sort((a, b) => b[1] - a[1]).slice(0, MAX);
+    // A Claude session's Done replaces its earlier one: that key went stale at the session's next turn
+    const session = key.match(/^claude \S+ /)?.[0];
+    const kept = session ? Object.fromEntries(Object.entries(s).filter(([k]) => !k.startsWith(session))) : s;
+    const all = Object.entries({ ...kept, [key]: now + days * 86_400_000 }).sort((a, b) => b[1] - a[1]).slice(0, MAX);
     return Object.fromEntries(all);
 }

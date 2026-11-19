@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { readSessions } from '@/lib/claude';
+import { beats } from '@/lib/pulse';
 import { startSession } from '@/lib/runner';
 import { refuse } from './guard';
 
@@ -21,4 +23,13 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Claude did not start.' }, { status: 502 });
     }
+}
+
+/** Which sessions need you now, as one string: an open tab asks every few seconds and reloads when it changes. Local only. */
+export async function GET(req: NextRequest) {
+    const no = await refuse(req);
+    if (no) return no;
+    const sessions = (await readSessions()) ?? [];
+    // The same keys as the page's own Claude beats (Live.tsx compares the two), from the same function
+    return NextResponse.json({ sig: beats([], sessions).map(b => b.key).join('|') });
 }

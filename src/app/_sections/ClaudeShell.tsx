@@ -25,7 +25,8 @@ export function ClaudeShell({ sessions, repos, children }: { sessions: Session[]
                             <span className="min-w-0">
                                 <span className="block truncate font-medium">{s.title}</span>
                                 <span className="flex items-center gap-2 text-fg-muted">
-                                    <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${DOT[s.state]}`} />
+                                    {/* Lit only when it needs you or is working: a finished session from yesterday is just grey */}
+                                    <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${needsYou(s) || s.state === 'working' ? DOT[s.state] : 'bg-fg-muted'}`} />
                                     <span className="truncate">{s.repo}, {needsYou(s) ? SAID[s.state] : s.state === 'working' ? 'Working' : ago(s.at)}</span>
                                 </span>
                             </span>

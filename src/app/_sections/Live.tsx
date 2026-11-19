@@ -53,8 +53,23 @@ const usePrefs = () => useSyncExternalStore(subscribe, prefs, () => OFF);
 
 const canNotify = () => typeof window !== 'undefined' && 'Notification' in window;
 
-export function Live({ beats }: { beats: Beat[] }) {
+const CLAUDE_EVERY = 10_000;
+
+export function Live({ beats, local }: { beats: Beat[]; local?: boolean }) {
     const router = useRouter();
+
+    // On this PC, Claude sessions change by the second: a cheap check of which need you, reloading only when that changes
+    // The same keys, in the same order, as the server's answer (src/app/api/claude/route.ts)
+    const shown = beats.filter(b => b.kind === 'claude').map(b => b.key).join('|');
+    useEffect(() => {
+        if (!local) return;
+        const timer = setInterval(async () => {
+            if (document.visibilityState !== 'visible' && !prefs().on) return;
+            const sig = await fetch('/api/claude').then(r => (r.ok ? r.json() : null)).then(j => (j as { sig?: string } | null)?.sig ?? null, () => null);
+            if (sig !== null && sig !== shown) router.refresh();
+        }, CLAUDE_EVERY);
+        return () => clearInterval(timer);
+    }, [local, router, shown]);
 
     useEffect(() => {
         let last = Date.now();

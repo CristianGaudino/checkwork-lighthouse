@@ -3,7 +3,7 @@ import { adminEmail, requireAdmin } from '@/lib/access';
 import { checkNumber } from '@/lib/act';
 import { fetchFailure } from '@/lib/failure';
 import { memo, MINUTE } from '@/lib/memo';
-import { fetchActionChecks, fetchPr, fetchPreview, type Check } from '@/lib/pr';
+import { fetchActionChecks, fetchPatches, fetchPr, fetchPreview, type Check } from '@/lib/pr';
 import { ago, canMerge } from '@/lib/today';
 import { OWNER } from '../../../../../../lighthouse.config';
 import { approvePr, mergePr } from '../../../../act';
@@ -54,9 +54,10 @@ async function PullRequest(props: Props) {
 
     // Extras, each quiet on failure: checks from Actions where GraphQL gave none, why one failed, and a preview
     const quiet = <T,>(what: string, load: Promise<T>) => load.catch(error => { console.warn(`Could not load ${what}`, error); return null; });
-    const [actionChecks, preview] = await Promise.all([
+    const [actionChecks, preview, patches] = await Promise.all([
         pr.checks || !pr.sha ? null : quiet('Actions checks', memo(`pr checks ${pr.sha}`, MINUTE, () => fetchActionChecks(token, p.repo, pr.sha!))),
         pr.sha ? quiet('the preview', memo(`preview ${pr.sha}`, 5 * MINUTE, () => fetchPreview(token, p.repo, pr.sha!))) : null,
+        quiet('the diffs', memo(`patches ${p.repo} ${number} ${pr.sha}`, 5 * MINUTE, () => fetchPatches(token, p.repo, number))),
     ]);
     const checks = pr.checks ?? actionChecks ?? [];
     const failing = checks.some(c => c.state === 'failing');
@@ -106,14 +107,37 @@ async function PullRequest(props: Props) {
 
                 <Section title="Files" aside={<><span className="text-ok">+{num.format(pr.additions)}</span> <span className="text-bad">−{num.format(pr.deletions)}</span></>}>
                     <ul className={`${panel} text-sm tabular-nums`}>
-                        {pr.files.map(f => (
-                            <li key={f.path} className="flex items-center justify-between gap-4 px-4 py-2">
-                                <a {...ext} className={`${link} min-w-0 truncate font-mono text-xs`} href={`${pr.url}/files`} title={f.path}>
-                                    {f.change !== 'modified' && <span className="mr-2 font-sans text-fg-muted">{f.change[0].toUpperCase() + f.change.slice(1)}</span>}{f.path}
-                                </a>
-                                <span className="shrink-0 text-xs"><span className="text-ok">+{f.additions}</span> <span className="text-bad">−{f.deletions}</span></span>
-                            </li>
-                        ))}
+                        {pr.files.map(f => {
+                            const row = (
+                                <>
+                                    <span className="min-w-0 truncate font-mono text-xs" title={f.path}>
+                                        {f.change !== 'modified' && <span className="mr-2 font-sans text-fg-muted">{f.change[0].toUpperCase() + f.change.slice(1)}</span>}{f.path}
+                                    </span>
+                                    <span className="shrink-0 text-xs"><span className="text-ok">+{f.additions}</span> <span className="text-bad">−{f.deletions}</span></span>
+                                </>
+                            );
+                            const patch = patches?.get(f.path);
+                            // The diff opens in place, so a review needs no trip to GitHub; a file without one (binary, huge) links there
+                            return (
+                                <li key={f.path}>
+                                    {patch ? (
+                                        <details className="group">
+                                            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-2 hover:bg-surface/60 group-open:bg-surface">{row}</summary>
+                                            <pre className="overflow-x-auto border-t border-line py-2 font-mono text-xs leading-5">
+                                                {/* w-max: each row's colour runs the width of the longest line, not just the screen */}
+                                                <code className="block w-max min-w-full">
+                                                {patch.split('\n').map((l, i) => (
+                                                    <span key={i} className={`block px-4 ${l.startsWith('+') ? 'bg-ok/10 text-ok' : l.startsWith('-') ? 'bg-bad/10 text-bad' : l.startsWith('@@') || l.startsWith('…') ? 'text-fg-muted' : ''}`}>{l || ' '}</span>
+                                                ))}
+                                                </code>
+                                            </pre>
+                                        </details>
+                                    ) : (
+                                        <a {...ext} className="flex items-center justify-between gap-4 px-4 py-2 hover:bg-surface/60" href={`${pr.url}/files`}>{row}</a>
+                                    )}
+                                </li>
+                            );
+                        })}
                     </ul>
                     {pr.moreFiles > 0 && <p className="mt-2 text-sm text-fg-muted">And {n(pr.moreFiles, 'more file')}, <a {...ext} className={link} href={`${pr.url}/files`}>on GitHub</a>.</p>}
                 </Section>
