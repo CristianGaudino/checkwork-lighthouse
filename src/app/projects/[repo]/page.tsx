@@ -193,7 +193,7 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
                                     <li key={e.message} className="flex items-baseline justify-between gap-4 px-4 py-2">
                                         <span className="min-w-0">
                                             {e.fresh && <span className="block text-xs text-warn">New since the deploy</span>}
-                                            <span title={e.message} className="line-clamp-2 break-words font-mono text-xs">{e.message}</span>
+                                            <span className="break-words font-mono text-xs">{e.message}</span>
                                         </span>
                                         <span className="shrink-0 tabular-nums text-fg-muted">{num.format(e.count)}</span>
                                     </li>

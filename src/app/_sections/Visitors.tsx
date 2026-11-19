@@ -76,13 +76,13 @@ type Row = { name: string; traffic?: SiteTraffic; visitors?: VisitorData; users?
 const change = (now: number, before: number | undefined) => (before === undefined ? '–' : now === before ? 'Same' : vsLastWeek(now, before).replace(' vs last week', ''));
 
 /** Every site side by side: visits on last week, the top referrer, and users where Clerk is set up. */
-export function VisitorsSummary({ rows, problem }: { rows: Row[]; problem?: string }) {
+export function VisitorsSummary({ rows, problems }: { rows: Row[]; problems: string[] }) {
     const anyUsers = rows.some(r => r.users);
     // Nothing to compare until analytics or a Clerk key answers; the Traffic section says what to set
-    if (!problem && !anyUsers && !rows.some(r => r.traffic)) return null;
+    if (!problems.length && !anyUsers && !rows.some(r => r.traffic)) return null;
     return (
         <Section id="visitors" title="Visitors" aside="7 days, against the week before">
-            {problem && <Problem>{problem}</Problem>}
+            {problems.map(p => <Problem key={p}>{p}</Problem>)}
             <div className="relative mt-3 overflow-x-auto rounded-2xl border border-line">
                 <table className="w-full whitespace-nowrap text-left text-sm tabular-nums">
                     <thead className="text-xs text-fg-muted">

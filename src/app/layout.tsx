@@ -18,7 +18,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 const NAME = 'Checkwork Lighthouse';
 
 export const metadata: Metadata = {
-    title: { template: `%s Â· ${NAME}`, default: NAME },
+    title: { template: `%s · ${NAME}`, default: NAME },
     description: 'Every Checkwork site, repo and release in one place.',
     applicationName: NAME,
     robots: { index: false, follow: false },
