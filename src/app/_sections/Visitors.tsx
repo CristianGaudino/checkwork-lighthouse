@@ -81,26 +81,26 @@ export function VisitorsSummary({ rows, problem }: { rows: Row[]; problem?: stri
     // Nothing to compare until analytics or a Clerk key answers; the Traffic section says what to set
     if (!problem && !anyUsers && !rows.some(r => r.traffic)) return null;
     return (
-        <Section id="visitors" title="Visitors" aside="7 days, against the 7 before">
+        <Section id="visitors" title="Visitors" aside="7 days, against the week before">
             {problem && <Problem>{problem}</Problem>}
             <div className="relative mt-3 overflow-x-auto rounded-2xl border border-line">
                 <table className="w-full whitespace-nowrap text-left text-sm tabular-nums">
                     <thead className="text-xs text-fg-muted">
                         <tr className="border-b border-line">
-                            {['Site', 'Visits', 'Change', 'Top referrer', ...(anyUsers ? ['Users', 'New', 'Active'] : [])].map(h => <th key={h} scope="col" className={`${cell} font-normal`}>{h}</th>)}
+                            {['Site', 'Visits', 'Change', 'Top referrer', ...(anyUsers ? ['Users', 'New', 'Active'] : [])].map(h => <th key={h} scope="col" className={`${cell} font-normal ${h === 'Site' || h === 'Top referrer' ? '' : 'text-right'}`}>{h}</th>)}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
                         {rows.filter(r => r.traffic || r.users).map(r => (
                             <tr key={r.name}>
                                 <th scope="row" className={`${cell} font-medium`}>{r.name}</th>
-                                <td className={cell}>{r.traffic ? num.format(r.traffic.visits) : '–'}</td>
-                                <td className={`${cell} text-fg-muted`}>{r.traffic ? change(r.traffic.visits, r.visitors?.prevVisits) : '–'}</td>
+                                <td className={`${cell} text-right`}>{r.traffic ? num.format(r.traffic.visits) : '–'}</td>
+                                <td className={`${cell} text-right text-fg-muted`}>{r.traffic ? change(r.traffic.visits, r.visitors?.prevVisits) : '–'}</td>
                                 <td className={`${cell} max-w-56 truncate text-fg-muted`}>{r.visitors?.referrers[0]?.name ?? '–'}</td>
                                 {anyUsers && <>
-                                    <td className={cell}>{r.users ? num.format(r.users.total) : '–'}</td>
-                                    <td className={`${cell} text-fg-muted`}>{r.users ? `${num.format(r.users.new7)} (${change(r.users.new7, r.users.newPrev7)})` : '–'}</td>
-                                    <td className={`${cell} text-fg-muted`}>{r.users ? num.format(r.users.active7) : '–'}</td>
+                                    <td className={`${cell} text-right`}>{r.users ? num.format(r.users.total) : '–'}</td>
+                                    <td className={`${cell} text-right text-fg-muted`}>{r.users ? `${num.format(r.users.new7)} (${change(r.users.new7, r.users.newPrev7)})` : '–'}</td>
+                                    <td className={`${cell} text-right text-fg-muted`}>{r.users ? num.format(r.users.active7) : '–'}</td>
                                 </>}
                             </tr>
                         ))}

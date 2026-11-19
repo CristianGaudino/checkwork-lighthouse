@@ -86,13 +86,12 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
                 <span className="flex items-center gap-3"><Dot light={t.problem ? null : light} className="size-2.5" /><ProjectIcon project={p.repo} className="size-9 rounded-lg text-sm" />{p.name}</span>
             </PageTitle>
             {t.problem && <Problem>{t.problem}</Problem>}
-            <StatusLine repo={p.repo} status={status} />
 
             <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line text-sm tabular-nums sm:grid-cols-4">
                 {facts.map(([label, value, tone]) => (
                     <div key={label} className="bg-canvas px-4 py-3">
                         <dt className="text-xs text-fg-muted">{label}</dt>
-                        <dd className={`mt-1 ${tone ?? ''}`}>{value}</dd>
+                        <dd className={`mt-1 text-[15px] ${tone ?? ''}`}>{value}</dd>
                     </div>
                 ))}
             </dl>
@@ -135,8 +134,10 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
 
                 {!t.problem && <Versions projects={t.rows} repos={t.repos} only={p.repo} />}
 
-                {sessions && <ClaudeSessions title="Claude sessions" sessions={sessions.filter(s => s.repo === p.repo)} />}
+                {sessions && <ClaudeSessions title="Claude sessions" oneRepo sessions={sessions.filter(s => s.repo === p.repo)} />}
                 {pc?.repos.some(r => r.name === p.repo) && <Git title="On this PC" root={pc.root} repos={pc.repos.filter(r => r.name === p.repo)} />}
+
+                <Section title="Status"><StatusLine repo={p.repo} status={status} /></Section>
             </div>
         </>
     );
@@ -144,9 +145,9 @@ async function Project(props: PageProps<'/projects/[repo]'>) {
 
 /** The repo's status and what it means. */
 const StatusLine = ({ repo, status }: { repo: string; status: Listed['status'] }) => (
-    <div className="mt-4 grid gap-1 text-sm">
+    <div className="mt-3 grid gap-2 text-sm">
         <StatusPicker action={setRepoStatus} repo={repo} status={status} />
-        <p className="text-fg-muted">{STATUS_MEANS}</p>
+        <p className="max-w-2xl text-fg-muted">{STATUS_MEANS}</p>
     </div>
 );
 
@@ -163,7 +164,7 @@ function Archived({ p }: { p: Listed }) {
             }>
                 <span className="flex items-center gap-3"><ProjectIcon project={p.repo} className="size-9 rounded-lg text-sm" />{p.name}</span>
             </PageTitle>
-            <p className="mt-6 text-sm text-fg-muted">Archived, so Lighthouse loads nothing for it. Pick another status to bring it back.</p>
+            <p className="mt-6 text-sm text-fg-muted">Archived. Pick another status to bring it back.</p>
             <StatusLine repo={p.repo} status={p.status} />
         </>
     );
@@ -177,9 +178,7 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
         <>
                 {unset && unset.length > 0 && (
                     <Section title="Worker settings" aside={`${unset.length} not set`}>
-                        <p className="mt-3 max-w-2xl text-sm text-fg-muted">
-                            In .env.example but not on the {worker} Worker. Some may be optional; a missing one it needs breaks the site.
-                        </p>
+                        <p className="mt-3 max-w-2xl text-sm text-fg-muted">In .env.example but not on the {worker} Worker. Some may be optional.</p>
                         <p className="mt-2 flex flex-wrap gap-2">{unset.map(name => <code key={name} className="rounded-md border border-line px-2 py-0.5 font-mono text-xs">{name}</code>)}</p>
                     </Section>
                 )}
@@ -192,7 +191,10 @@ async function WorkerHealth({ worker, deployedAt, names }: { worker: string | nu
                             <ul className={`${panel} text-sm`}>
                                 {top.map(e => (
                                     <li key={e.message} className="flex items-baseline justify-between gap-4 px-4 py-2">
-                                        <span className="min-w-0 break-words font-mono text-xs">{e.message}{e.fresh && <span className="ml-2 font-sans text-warn">New since the deploy</span>}</span>
+                                        <span className="min-w-0">
+                                            {e.fresh && <span className="block text-xs text-warn">New since the deploy</span>}
+                                            <span title={e.message} className="line-clamp-2 break-words font-mono text-xs">{e.message}</span>
+                                        </span>
                                         <span className="shrink-0 tabular-nums text-fg-muted">{num.format(e.count)}</span>
                                     </li>
                                 ))}

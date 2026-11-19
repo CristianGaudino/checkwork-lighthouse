@@ -57,8 +57,8 @@ export async function Tasks({ tasks: listed, compact, local }: { tasks: Task[]; 
                     <span className="flex items-center gap-2 pl-5 text-sm text-fg-muted sm:justify-end sm:pl-0"><ProjectIcon project={t.project} className="size-4 text-[8px]" />{t.project}</span>
                     {!compact && (
                         <div className="grid gap-2 pl-5 sm:col-span-2">
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-fg-muted">
-                                <span className="w-full sm:w-auto">{t.detail}</span>
+                            <p className="text-sm text-fg-muted">{t.detail}</p>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted empty:hidden">
                                 {local && t.deploy && <DeployLink repo={t.deploy} />}
                                 {local && repo && t.fix && claude(repo, 'Fix with Claude', t.fix, 'Opens Claude Code in VS Code with a prompt for this', true)}
                                 {/* Only work that lives on GitHub (a PR, a release, a repo) is something Claude Code can pick up */}

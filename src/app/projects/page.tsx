@@ -27,7 +27,7 @@ async function Projects() {
         <>
             <PageTitle sub={
                 <span className="flex flex-wrap gap-x-4 gap-y-1">
-                    <span>{n(t.sites.length, 'project')}. Open one for everything about it</span>
+                    <span>{n(t.sites.length, 'project')}</span>
                     {local && <a className={`${link} text-fg`} href={askHref(`Add a new site to Lighthouse: follow ${process.cwd()}/docs/new-site.md step by step. Ask me for the repo and address first.`)} title="Opens Claude Code in VS Code with the steps for a new site">Add a site</a>}
                 </span>
             }>Projects</PageTitle>

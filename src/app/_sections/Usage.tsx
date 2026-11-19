@@ -46,7 +46,7 @@ export function Versions({ projects, repos, only }: { projects: Project[]; repos
     const rows = all.filter(r => !only || r.repo === only);
     if (!rows.length) return null;
     return (
-        <Section id="versions" title="Versions" aside="Amber is behind the newest in use">
+        <Section id="versions" title="Versions" aside="Amber is behind the newest">
             <div className="relative mt-3 overflow-x-auto rounded-2xl border border-line">
                 <table className="w-full whitespace-nowrap text-left text-sm tabular-nums">
                     <thead className="text-xs text-fg-muted">

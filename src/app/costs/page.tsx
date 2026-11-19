@@ -49,7 +49,7 @@ async function Costs() {
 
     return (
         <>
-            <PageTitle sub="Claude API and Cloudflare in money. GitHub and Neon in use, which is free up to their limits">
+            <PageTitle sub="Claude and Cloudflare in money, GitHub and Neon in use">
                 {known ? `About ${usd.format(known)} this month` : 'Costs'}
             </PageTitle>
             {(m?.projected ?? 0) > INCLUDED && <Problem>Actions will pass its {num.format(INCLUDED)} free minutes this month at this rate. Deploy from this PC to save some.</Problem>}
@@ -57,18 +57,20 @@ async function Costs() {
                 <Section title="Services">
                     <ul className={`${panel} text-sm`}>
                         {rows.map(r => (
-                            <li key={r.label} className="grid gap-x-6 gap-y-1 px-4 py-3 sm:grid-cols-[10rem_1fr_auto] sm:items-baseline">
+                            <li key={r.label} className="grid grid-cols-[1fr_auto] items-baseline gap-x-6 gap-y-1 px-4 py-3 sm:grid-cols-[10rem_1fr_auto]">
                                 <span className="font-medium">{r.label}</span>
-                                <span className="tabular-nums">
-                                    {r.value}
-                                    {r.note && <span className="block text-fg-muted">{r.note}</span>}
+                                {/* On a phone Billing sits beside the name, the figures under both */}
+                                <a {...ext} className={`${link} text-fg-muted sm:order-last`} href={r.href}>Billing</a>
+                                <span className="col-span-2 tabular-nums sm:col-span-1">
+                                    {/* Not known yet: the note says why, so a dash above it adds nothing */}
+                                    {(r.value !== '–' || !r.note) && r.value}
+                                    {r.note && <span className={`${r.value === '–' ? '' : 'block '}text-fg-muted`}>{r.note}</span>}
                                 </span>
-                                <a {...ext} className={`${link} text-fg-muted`} href={r.href}>Billing</a>
                             </li>
                         ))}
                     </ul>
                 </Section>
-                <Section title="Domains" aside="Renew before these dates">
+                <Section title="Domains" aside="Renews">
                     <ul className={`${panel} text-sm`}>
                         {domains.map(([d, { repo, expires }]) => (
                             <li key={d} className="flex items-center justify-between gap-4 px-4 py-3">

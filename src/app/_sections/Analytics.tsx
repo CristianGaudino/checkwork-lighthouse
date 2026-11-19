@@ -8,7 +8,7 @@ const pct = new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDi
 
 type Row = { name: string; site?: string; worker: string | null };
 
-/** Visits (Web Analytics, 7 days) and Worker health (24 hours) per site. A dash means no data, often Web Analytics not on yet. */
+/** Visits (Web Analytics, 7 days) and Worker health (24 hours) per site. A site with neither is left out: its page's Setup says why. */
 export function Analytics({ rows, data, problem, setup }: { rows: Row[]; data?: Data; problem?: string; setup?: string }) {
     return (
         <Section id="traffic" title="Traffic" aside="Visits 7 days, requests 24 hours">
@@ -19,24 +19,25 @@ export function Analytics({ rows, data, problem, setup }: { rows: Row[]; data?: 
                     <table className="w-full whitespace-nowrap text-left text-sm tabular-nums">
                         <thead className="text-xs text-fg-muted">
                             <tr className="border-b border-line">
-                                {['Site', 'Visits', 'Page views', 'Top page', 'Requests', 'Errors', 'CPU p99'].map(h => <th key={h} scope="col" className={`${cell} font-normal`}>{h}</th>)}
+                                {['Site', 'Visits', 'Page views', 'Top page', 'Requests', 'Errors', 'CPU p99'].map(h => <th key={h} scope="col" className={`${cell} font-normal ${h === 'Site' || h === 'Top page' ? '' : 'text-right'}`}>{h}</th>)}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-line">
-                            {/* A repo with no site and no Worker has nothing to show here */}
-                            {rows.filter(r => r.site || r.worker).map(r => {
+                            {rows.map(r => {
                                 const t = r.site ? data.traffic.get(siteKey(r.site)) : undefined;
                                 const w = r.worker ? data.workers.get(r.worker) : undefined;
+                                // A row of dashes says nothing
+                                if (!t && !w) return null;
                                 const rate = w && w.requests ? w.errors / w.requests : 0;
                                 return (
                                     <tr key={r.name}>
                                         <th scope="row" className={`${cell} font-medium`}>{r.name}</th>
-                                        <td className={cell}>{t ? num.format(t.visits) : '–'}</td>
-                                        <td className={cell}>{t ? num.format(t.views) : '–'}</td>
+                                        <td className={`${cell} text-right`}>{t ? num.format(t.visits) : '–'}</td>
+                                        <td className={`${cell} text-right`}>{t ? num.format(t.views) : '–'}</td>
                                         <td className={`${cell} max-w-56 truncate text-fg-muted`}>{t?.topPaths[0]?.path ?? '–'}</td>
-                                        <td className={cell}>{w ? num.format(w.requests) : '–'}</td>
-                                        <td className={`${cell} ${rate > 0.01 ? 'text-bad' : 'text-fg-muted'}`}>{w ? `${num.format(w.errors)} (${pct.format(rate)})` : '–'}</td>
-                                        <td className={`${cell} text-fg-muted`}>{w?.cpuP99 != null ? `${num.format(Math.round(w.cpuP99))} ms` : '–'}</td>
+                                        <td className={`${cell} text-right`}>{w ? num.format(w.requests) : '–'}</td>
+                                        <td className={`${cell} text-right ${rate > 0.01 ? 'text-bad' : 'text-fg-muted'}`}>{w ? `${num.format(w.errors)} (${pct.format(rate)})` : '–'}</td>
+                                        <td className={`${cell} text-right text-fg-muted`}>{w?.cpuP99 != null ? `${num.format(Math.round(w.cpuP99))} ms` : '–'}</td>
                                     </tr>
                                 );
                             })}

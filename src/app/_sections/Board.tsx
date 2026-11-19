@@ -42,10 +42,10 @@ export async function Board({ local, project }: { local: boolean; project?: stri
                     const list = cards(c);
                     return (
                         <div key={c} className="rounded-2xl border border-line">
-                            <h3 className="flex items-baseline justify-between border-b border-line px-4 py-2 text-sm font-medium">
+                            <h3 className={`flex items-baseline justify-between px-4 py-2 text-sm font-medium ${list.length ? 'border-b border-line' : ''}`}>
                                 {c}<span className="font-normal text-fg-muted tabular-nums">{list.length}</span>
                             </h3>
-                            {list.length ? (
+                            {list.length > 0 && (
                                 <ul className="divide-y divide-line">
                                     {list.slice(0, SHOWN).map(card => (
                                         <li key={`${card.project} ${card.title}`} className="px-4 py-3 text-sm">
@@ -63,7 +63,7 @@ export async function Board({ local, project }: { local: boolean; project?: stri
                                         </li>
                                     ))}
                                 </ul>
-                            ) : <p className="px-4 py-3 text-sm text-fg-muted">Nothing here</p>}
+                            )}
                             {list.length > SHOWN && <p className="border-t border-line px-4 py-3 text-sm text-fg-muted">And {list.length - SHOWN} more on the boards</p>}
                         </div>
                     );
